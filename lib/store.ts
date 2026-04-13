@@ -29,7 +29,7 @@ const defaultData: AppData = {
     },
     {
       id: '4', firstName: 'אביתר', lastName: 'בן-שושן',
-      rank: 'רב"ט', phone: '050-3234567', role: 'נהג',
+      rank: 'רב טוראי (רב"ט)', phone: '050-3234567', role: 'נהג',
       isActive: true, teamId: 'team1',
       permissionLevel: 'soldier', extraPermissions: [],
     },
@@ -47,7 +47,7 @@ const defaultData: AppData = {
     },
     {
       id: '7', firstName: 'אלון', lastName: 'האוקיפ',
-      rank: 'רב"ט', phone: '050-7234567', role: 'לוחם',
+      rank: 'רב טוראי (רב"ט)', phone: '050-7234567', role: 'לוחם',
       isActive: true, teamId: 'team2',
       permissionLevel: 'soldier', extraPermissions: [],
     },
