@@ -1,12 +1,41 @@
-export type Rank = 'טוראי' | 'רב"ט' | 'סמל' | 'סמל ראשון' | 'סגן' | 'סרן' | 'רב סרן' | 'סגן אלוף';
+export type Rank =
+  | 'טוראי'
+  | 'רב"ט'
+  | 'סמל'
+  | 'סמל ראשון'
+  | 'סגן'
+  | 'סרן'
+  | 'רב סרן'
+  | 'סגן אלוף';
+
+/** רמת הרשאה בסיסית — נקבעת לפי תפקיד */
+export type PermissionLevel = 'soldier' | 'team_commander' | 'company_commander';
+
+/** הרשאות נוספות — ניתנות ידנית בתוקף עד ביטול */
+export type ExtraPermission = 'extended_data' | 'management';
+
+export interface Team {
+  id: string;
+  name: string;
+}
 
 export interface Soldier {
   id: string;
-  name: string;
-  rank: Rank;
+  firstName: string;
+  lastName: string;
   phone: string;
-  role: string; // e.g. "לוחם", "נהג", "קשר"
+  role: string;
+  rank: Rank;
   isActive: boolean;
+  teamId: string | null;
+  // פרטים אישיים — גישה לפי הרשאה
+  personalNumber?: string; // מספר אישי
+  idNumber?: string;       // תעודת זהות
+  address?: string;        // כתובת
+  birthDate?: string;      // תאריך לידה YYYY-MM-DD
+  // הרשאות
+  permissionLevel: PermissionLevel;
+  extraPermissions: ExtraPermission[];
 }
 
 export interface TaskTemplate {
@@ -28,6 +57,12 @@ export interface Assignment {
 
 export interface AppData {
   soldiers: Soldier[];
+  teams: Team[];
   taskTemplates: TaskTemplate[];
   assignments: Assignment[];
+}
+
+/** המשתמש המחובר כרגע (מאוחסן ב-localStorage) */
+export interface CurrentUser {
+  soldierId: string;
 }

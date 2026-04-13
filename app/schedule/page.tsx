@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Soldier, TaskTemplate, Assignment } from "@/lib/types";
+import { fullName } from "@/lib/permissions";
 import {
   loadData,
   saveData,
@@ -241,7 +242,7 @@ export default function SchedulePage() {
                             key={sid}
                             className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full"
                           >
-                            {s.rank} {s.name}
+                            {s.rank} {fullName(s)}
                           </span>
                         ) : null;
                       })}
@@ -276,7 +277,7 @@ export default function SchedulePage() {
                     key={s.id}
                     className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
                   >
-                    {s.rank} {s.name}
+                    {s.rank} {fullName(s)}
                   </span>
                 ))}
               {soldiers.every((s) => assignedSoldierIds.has(s.id)) && (
@@ -325,7 +326,7 @@ export default function SchedulePage() {
                       className="w-4 h-4 accent-purple-600"
                     />
                     <span className="flex-1 font-medium">
-                      {soldier.rank} {soldier.name}
+                      {soldier.rank} {fullName(soldier)}
                     </span>
                     <span className="text-xs text-gray-400">{soldier.role}</span>
                     {isAssignedElsewhere && (
