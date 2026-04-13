@@ -20,7 +20,7 @@ function SetupForm({ onDone }: { onDone: (soldierId: string) => void }) {
     const next = addSoldier(data, {
       firstName, lastName, phone,
       rank: 'סרן', role: 'מפקד פלוגה',
-      isActive: true, teamId: null,
+      isActive: true, sectionId: null,
       permissionLevel: 'company_commander',
       extraPermissions: [],
     });
@@ -88,7 +88,7 @@ function LoginSelector({ soldiers, onLogin }: { soldiers: Soldier[]; onLogin: (i
 
   const byLevel = {
     company_commander: filtered.filter(s => s.permissionLevel === 'company_commander'),
-    team_commander: filtered.filter(s => s.permissionLevel === 'team_commander'),
+    section_commander: filtered.filter(s => s.permissionLevel === 'section_commander'),
     soldier: filtered.filter(s => s.permissionLevel === 'soldier'),
   };
 
@@ -115,7 +115,7 @@ function LoginSelector({ soldiers, onLogin }: { soldiers: Soldier[]; onLogin: (i
 
         {/* User groups */}
         <div className="space-y-4 max-h-96 overflow-y-auto">
-          {(['company_commander', 'team_commander', 'soldier'] as const).map(level => {
+          {(['company_commander', 'section_commander', 'soldier'] as const).map(level => {
             const group = byLevel[level];
             if (group.length === 0) return null;
             return (
@@ -132,7 +132,7 @@ function LoginSelector({ soldiers, onLogin }: { soldiers: Soldier[]; onLogin: (i
                     >
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
                         level === 'company_commander' ? 'bg-purple-100 text-purple-700' :
-                        level === 'team_commander' ? 'bg-blue-100 text-blue-700' :
+                        level === 'section_commander' ? 'bg-blue-100 text-blue-700' :
                         'bg-gray-100 text-gray-600'
                       }`}>
                         {s.firstName[0]}{s.lastName[0]}

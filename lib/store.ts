@@ -1,60 +1,60 @@
-import { AppData, Soldier, TaskTemplate, Assignment, Team, CurrentUser } from './types';
+import { AppData, Soldier, TaskTemplate, Assignment, Section, CurrentUser } from './types';
 
 const STORAGE_KEY = 'shavtsak_data';
 const CURRENT_USER_KEY = 'shavtsak_current_user';
 
 const defaultData: AppData = {
-  teams: [
-    { id: 'team1', name: 'צוות א' },
-    { id: 'team2', name: 'צוות ב' },
+  sections: [
+    { id: 'section1', name: 'מחלקה 1' },
+    { id: 'section2', name: 'מחלקה 2' },
   ],
   soldiers: [
     {
       id: '1', firstName: 'מאיר', lastName: 'יוסט',
       rank: 'סרן', phone: '050-1234567', role: 'מפקד פלוגה',
-      isActive: true, teamId: null,
+      isActive: true, sectionId: null,
       permissionLevel: 'company_commander', extraPermissions: [],
     },
     {
       id: '2', firstName: 'ניר', lastName: 'לוסטיג',
-      rank: 'סמל', phone: '050-2234567', role: 'מפקד צוות',
-      isActive: true, teamId: 'team1',
-      permissionLevel: 'team_commander', extraPermissions: [],
+      rank: 'סמל', phone: '050-2234567', role: 'מפקד מחלקה',
+      isActive: true, sectionId: 'section1',
+      permissionLevel: 'section_commander', extraPermissions: [],
     },
     {
       id: '3', firstName: 'מיכאל', lastName: 'ירט',
-      rank: 'סמל', phone: '050-5234567', role: 'מפקד צוות',
-      isActive: true, teamId: 'team2',
-      permissionLevel: 'team_commander', extraPermissions: [],
+      rank: 'סמל', phone: '050-5234567', role: 'מפקד מחלקה',
+      isActive: true, sectionId: 'section2',
+      permissionLevel: 'section_commander', extraPermissions: [],
     },
     {
       id: '4', firstName: 'אביתר', lastName: 'בן-שושן',
       rank: 'רב טוראי (רב"ט)', phone: '050-3234567', role: 'נהג',
-      isActive: true, teamId: 'team1',
+      isActive: true, sectionId: 'section1',
       permissionLevel: 'soldier', extraPermissions: [],
     },
     {
       id: '5', firstName: 'יגאל', lastName: 'שטיינמיץ',
       rank: 'טוראי', phone: '050-4234567', role: 'לוחם',
-      isActive: true, teamId: 'team1',
+      isActive: true, sectionId: 'section1',
       permissionLevel: 'soldier', extraPermissions: [],
     },
     {
       id: '6', firstName: 'אסף', lastName: 'פרוינד',
       rank: 'טוראי', phone: '050-6234567', role: 'לוחם',
-      isActive: true, teamId: 'team2',
+      isActive: true, sectionId: 'section2',
       permissionLevel: 'soldier', extraPermissions: [],
     },
     {
       id: '7', firstName: 'אלון', lastName: 'האוקיפ',
       rank: 'רב טוראי (רב"ט)', phone: '050-7234567', role: 'לוחם',
-      isActive: true, teamId: 'team2',
+      isActive: true, sectionId: 'section2',
       permissionLevel: 'soldier', extraPermissions: [],
     },
     {
       id: '8', firstName: 'טאי', lastName: 'ארזואן',
       rank: 'טוראי', phone: '050-8234567', role: 'לוחם',
-      isActive: true, teamId: 'team1',
+      isActive: true, sectionId: 'section1',
       permissionLevel: 'soldier', extraPermissions: [],
     },
   ],
@@ -68,17 +68,25 @@ const defaultData: AppData = {
   assignments: [],
 };
 
-/** Migration: old Soldier had a single 'name' field */
+/** Migration: converts old field names and values to current schema */
 function migrateSoldier(s: Record<string, unknown>): Soldier {
+  // name → firstName + lastName
   if (!s.firstName && s.name) {
     const parts = (s.name as string).split(' ');
     s.firstName = parts[0] ?? '';
     s.lastName = parts.slice(1).join(' ') ?? '';
     delete s.name;
   }
+  // teamId → sectionId
+  if (s.sectionId === undefined && s.teamId !== undefined) {
+    s.sectionId = s.teamId;
+    delete s.teamId;
+  }
+  if (s.sectionId === undefined) s.sectionId = null;
+  // team_commander → section_commander
+  if (s.permissionLevel === 'team_commander') s.permissionLevel = 'section_commander';
   if (!s.permissionLevel) s.permissionLevel = 'soldier';
   if (!s.extraPermissions) s.extraPermissions = [];
-  if (s.teamId === undefined) s.teamId = null;
   return s as unknown as Soldier;
 }
 
@@ -92,7 +100,12 @@ export function loadData(): AppData {
     if (Array.isArray(parsed.soldiers)) {
       parsed.soldiers = (parsed.soldiers as Record<string, unknown>[]).map(migrateSoldier);
     }
-    if (!parsed.teams) parsed.teams = defaultData.teams;
+    // teams → sections
+    if (!parsed.sections && parsed.teams) {
+      parsed.sections = parsed.teams;
+      delete parsed.teams;
+    }
+    if (!parsed.sections) parsed.sections = defaultData.sections;
     return parsed as unknown as AppData;
   } catch {
     return defaultData;
@@ -111,7 +124,9 @@ export function loadCurrentUser(): CurrentUser | null {
   try {
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as CurrentUser;
+    const parsed = JSON.parse(raw) as CurrentUser;
+    if (!parsed.soldierId) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -137,18 +152,19 @@ export function deleteSoldier(data: AppData, id: string): AppData {
   return { ...data, soldiers: data.soldiers.filter(s => s.id !== id) };
 }
 
-// ── Teams ─────────────────────────────────────────────────────────────────────
+// ── Sections ──────────────────────────────────────────────────────────────────
 
-export function addTeam(data: AppData, team: Omit<Team, 'id'>): AppData {
-  const newTeam: Team = { ...team, id: crypto.randomUUID() };
-  return { ...data, teams: [...data.teams, newTeam] };
+export function addSection(data: AppData, section: Omit<Section, 'id'>): AppData {
+  const newSection: Section = { ...section, id: crypto.randomUUID() };
+  return { ...data, sections: [...data.sections, newSection] };
 }
 
-export function deleteTeam(data: AppData, id: string): AppData {
+export function deleteSection(data: AppData, id: string): AppData {
   return {
     ...data,
-    teams: data.teams.filter(t => t.id !== id),
-    soldiers: data.soldiers.map(s => s.teamId === id ? { ...s, teamId: null } : s),
+    sections: data.sections.filter(s => s.id !== id),
+    // חיילים שהיו במחלקה שנמחקה — מאבדים את השיוך
+    soldiers: data.soldiers.map(s => s.sectionId === id ? { ...s, sectionId: null } : s),
   };
 }
 

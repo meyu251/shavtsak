@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Soldier, Rank, PermissionLevel, ExtraPermission, Team } from "@/lib/types";
+import { Soldier, Rank, PermissionLevel, ExtraPermission } from "@/lib/types";
+import type { Section as SectionType } from "@/lib/types";
 import { loadData, saveData, addSoldier, updateSoldier, deleteSoldier } from "@/lib/store";
 import {
   fullName, canSeeFullDetails, canEditSoldier, canAddSoldier,
@@ -30,13 +31,13 @@ const RANKS: Rank[] = [
   'רב סרן (רס"ן)',
   'סגן אלוף (סא"ל)',
 ];
-const ROLES = ['לוחם', 'נהג', 'קשר', 'חובש', 'מכונאי', 'מד"א', 'מפקד צוות', 'מפקד פלוגה'];
+const ROLES = ['לוחם', 'נהג', 'קשר', 'חובש', 'מכונאי', 'מד"א', 'מפקד מחלקה', 'מפקד פלוגה'];
 const EXTRA_PERMISSIONS: ExtraPermission[] = ['extended_data', 'management'];
 
 function emptyForm(): Omit<Soldier, 'id'> {
   return {
     firstName: '', lastName: '', phone: '', role: 'לוחם', rank: 'טוראי',
-    isActive: true, teamId: null,
+    isActive: true, sectionId: null,
     personalNumber: '', idNumber: '', address: '', birthDate: '',
     permissionLevel: 'soldier', extraPermissions: [],
   };
@@ -47,7 +48,7 @@ function emptyForm(): Omit<Soldier, 'id'> {
 export default function SoldiersPage() {
   const { currentUser, logout } = useAuth();
   const [soldiers, setSoldiers] = useState<Soldier[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [sections, setSections] = useState<SectionType[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState<string>('all');
@@ -59,7 +60,7 @@ export default function SoldiersPage() {
   useEffect(() => {
     const data = loadData();
     setSoldiers(data.soldiers);
-    setTeams(data.teams);
+    setSections(data.sections);
   }, []);
 
   // Keep viewer in sync with currentUser (which may update after edits)
@@ -84,8 +85,8 @@ export default function SoldiersPage() {
       const matchSearch = !search || name.includes(search.toLowerCase());
       const matchTeam =
         teamFilter === 'all' ||
-        (teamFilter === 'none' && s.teamId === null) ||
-        s.teamId === teamFilter;
+        (teamFilter === 'none' && s.sectionId === null) ||
+        s.sectionId === teamFilter;
       return matchSearch && matchTeam;
     });
   }, [soldiers, search, teamFilter]);
@@ -105,7 +106,7 @@ export default function SoldiersPage() {
     setEditingSoldier(s);
     setForm({
       firstName: s.firstName, lastName: s.lastName, phone: s.phone,
-      role: s.role, rank: s.rank, isActive: s.isActive, teamId: s.teamId,
+      role: s.role, rank: s.rank, isActive: s.isActive, sectionId: s.sectionId,
       personalNumber: s.personalNumber ?? '', idNumber: s.idNumber ?? '',
       address: s.address ?? '', birthDate: s.birthDate ?? '',
       permissionLevel: s.permissionLevel, extraPermissions: [...s.extraPermissions],
@@ -194,7 +195,7 @@ export default function SoldiersPage() {
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
           />
 
-          {/* Team filter */}
+          {/* סינון לפי מחלקה */}
           <div className="flex flex-wrap gap-1">
             <button
               onClick={() => setTeamFilter('all')}
@@ -202,13 +203,13 @@ export default function SoldiersPage() {
             >
               כולם
             </button>
-            {teams.map(t => (
+            {sections.map(sec => (
               <button
-                key={t.id}
-                onClick={() => setTeamFilter(t.id)}
-                className={`text-xs px-2 py-1 rounded-full border transition-colors ${teamFilter === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                key={sec.id}
+                onClick={() => setTeamFilter(sec.id)}
+                className={`text-xs px-2 py-1 rounded-full border transition-colors ${teamFilter === sec.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
               >
-                {t.name}
+                {sec.name}
               </button>
             ))}
           </div>
@@ -227,7 +228,7 @@ export default function SoldiersPage() {
               <ul className="divide-y divide-gray-100">
                 {[...activeFiltered, ...inactiveFiltered].map(s => {
                   const isSelected = s.id === selectedId;
-                  const teamName = teams.find(t => t.id === s.teamId)?.name;
+                  const sectionName = sections.find(sec => sec.id === s.sectionId)?.name;
                   return (
                     <li
                       key={s.id}
@@ -238,17 +239,17 @@ export default function SoldiersPage() {
                     >
                       <div className="min-w-0">
                         <p className="font-medium text-sm text-gray-800 truncate">{fullName(s)}</p>
-                        {teamName && (
-                          <p className="text-xs text-gray-400 truncate">{teamName}</p>
+                        {sectionName && (
+                          <p className="text-xs text-gray-400 truncate">{sectionName}</p>
                         )}
                       </div>
                       <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                         s.permissionLevel === 'company_commander' ? 'bg-purple-100 text-purple-700' :
-                        s.permissionLevel === 'team_commander' ? 'bg-blue-100 text-blue-700' :
+                        s.permissionLevel === 'section_commander' ? 'bg-blue-100 text-blue-700' :
                         'bg-gray-100 text-gray-500'
                       }`}>
                         {s.permissionLevel === 'company_commander' ? 'מפ"פ' :
-                         s.permissionLevel === 'team_commander' ? 'מפ"צ' : 'חייל'}
+                         s.permissionLevel === 'section_commander' ? 'מפ"מ' : 'חייל'}
                       </span>
                     </li>
                   );
@@ -272,7 +273,7 @@ export default function SoldiersPage() {
             <DetailPanel
               soldier={selected}
               viewer={viewer}
-              teams={teams}
+              sections={sections}
               onEdit={() => openEditForm(selected)}
               onDelete={() => setConfirmDelete(selected.id)}
               onToggleExtraPermission={toggleExtraPermission}
@@ -319,10 +320,10 @@ export default function SoldiersPage() {
                   onChange={e => setForm({ ...form, phone: e.target.value })}
                   className={inputCls} placeholder="050-0000000" />
               </Field>
-              <Field label="צוות">
-                <select value={form.teamId ?? ''} onChange={e => setForm({ ...form, teamId: e.target.value || null })} className={inputCls}>
-                  <option value="">ללא צוות</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <Field label="מחלקה">
+                <select value={form.sectionId ?? ''} onChange={e => setForm({ ...form, sectionId: e.target.value || null })} className={inputCls}>
+                  <option value="">ללא מחלקה</option>
+                  {sections.map(sec => <option key={sec.id} value={sec.id}>{sec.name}</option>)}
                 </select>
               </Field>
             </div>
@@ -401,18 +402,18 @@ export default function SoldiersPage() {
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 
 function DetailPanel({
-  soldier, viewer, teams, onEdit, onDelete,
+  soldier, viewer, sections, onEdit, onDelete,
   onToggleExtraPermission, onChangePermissionLevel,
 }: {
   soldier: Soldier;
   viewer: Soldier | null;
-  teams: Team[];
+  sections: SectionType[];
   onEdit: () => void;
   onDelete: () => void;
   onToggleExtraPermission: (s: Soldier, p: ExtraPermission) => void;
   onChangePermissionLevel: (s: Soldier, l: PermissionLevel) => void;
 }) {
-  const teamName = teams.find(t => t.id === soldier.teamId)?.name ?? '—';
+  const sectionName = sections.find(sec => sec.id === soldier.sectionId)?.name ?? '—';
   const canEdit = viewer ? canEditSoldier(viewer) : false;
   const canDelete = viewer ? canDeleteSoldier(viewer) : false;
   const canSeePrivate = viewer ? canSeeFullDetails(viewer, soldier) : false;
@@ -424,7 +425,7 @@ function DetailPanel({
       <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">{fullName(soldier)}</h2>
-          <p className="text-sm text-gray-500">{soldier.rank} · {soldier.role} · {teamName}</p>
+          <p className="text-sm text-gray-500">{soldier.rank} · {soldier.role} · {sectionName}</p>
         </div>
         <div className="flex gap-2">
           {!soldier.isActive && (
@@ -452,7 +453,7 @@ function DetailPanel({
           <InfoRow label="פלאפון" value={soldier.phone || '—'} ltr />
           <InfoRow label="דרגה" value={soldier.rank} />
           <InfoRow label="תפקיד" value={soldier.role} />
-          <InfoRow label="צוות" value={teamName} />
+          <InfoRow label="מחלקה" value={sectionName} />
         </Section>
 
         {/* Private info — permission-gated */}
@@ -478,7 +479,7 @@ function DetailPanel({
         <Section title="הרשאות">
           <div className="flex items-center gap-3 mb-3">
             <span className="text-sm text-gray-600">רמה בסיסית:</span>
-            {canManage && canChangePermissionLevel(viewer!) ? (
+            {canManage && viewer && canChangePermissionLevel(viewer) ? (
               <select
                 value={soldier.permissionLevel}
                 onChange={e => onChangePermissionLevel(soldier, e.target.value as PermissionLevel)}
@@ -491,7 +492,7 @@ function DetailPanel({
             ) : (
               <span className={`text-sm px-2 py-0.5 rounded-full font-medium ${
                 soldier.permissionLevel === 'company_commander' ? 'bg-purple-100 text-purple-700' :
-                soldier.permissionLevel === 'team_commander' ? 'bg-blue-100 text-blue-700' :
+                soldier.permissionLevel === 'section_commander' ? 'bg-blue-100 text-blue-700' :
                 'bg-gray-100 text-gray-600'
               }`}>
                 {PERMISSION_LEVEL_LABELS[soldier.permissionLevel]}

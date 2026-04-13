@@ -15,14 +15,14 @@ export type Rank =
   | 'סגן אלוף (סא"ל)';
 
 /** רמת הרשאה בסיסית — נקבעת לפי תפקיד */
-export type PermissionLevel = 'soldier' | 'team_commander' | 'company_commander';
+export type PermissionLevel = 'soldier' | 'section_commander' | 'company_commander';
 
 /** הרשאות נוספות — ניתנות ידנית בתוקף עד ביטול */
 export type ExtraPermission = 'extended_data' | 'management';
 
-export interface Team {
+export interface Section {
   id: string;
-  name: string;
+  name: string; // "מחלקה 1", "מחלקה 2", ...
 }
 
 export interface Soldier {
@@ -33,7 +33,7 @@ export interface Soldier {
   role: string;
   rank: Rank;
   isActive: boolean;
-  teamId: string | null;
+  sectionId: string | null;
   // פרטים אישיים — גישה לפי הרשאה
   personalNumber?: string; // מספר אישי
   idNumber?: string;       // תעודת זהות
@@ -63,7 +63,7 @@ export interface Assignment {
 
 export interface AppData {
   soldiers: Soldier[];
-  teams: Team[];
+  sections: Section[];
   taskTemplates: TaskTemplate[];
   assignments: Assignment[];
 }

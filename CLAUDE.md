@@ -37,7 +37,7 @@ No test suite yet. Use `npm run build` to catch type errors before pushing.
 Soldier {
   firstName, lastName, phone, rank, role, teamId,
   isActive, personalNumber, idNumber, address, birthDate,  // private fields
-  permissionLevel: 'soldier' | 'team_commander' | 'company_commander',
+  permissionLevel: 'soldier' | 'section_commander' | 'company_commander',
   extraPermissions: ('extended_data' | 'management')[]
 }
 AppData { soldiers, teams, taskTemplates, assignments }
@@ -50,7 +50,7 @@ Two localStorage keys: `shavtsak_data` (all app data) and `shavtsak_current_user
 Defined entirely in `lib/permissions.ts`. Three base levels set per soldier; two extra permissions granted manually:
 
 - `company_commander` → sees/edits everything, grants anything to anyone
-- `team_commander` → full details for own team only; grants to own team only
+- `section_commander` → full details for own team only; grants to own team only
 - `soldier` → sees names + phones of the whole company
 - `extended_data` (extra) → sees full details of everyone, cannot grant
 - `management` (extra) → `extended_data` + can grant permissions within own team

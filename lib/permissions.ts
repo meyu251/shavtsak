@@ -9,9 +9,9 @@ export function canSeeFullDetails(viewer: Soldier, target: Soldier): boolean {
   if (viewer.permissionLevel === 'company_commander') return true;
   if (viewer.extraPermissions.includes('extended_data')) return true;
   if (
-    viewer.permissionLevel === 'team_commander' &&
-    viewer.teamId !== null &&
-    viewer.teamId === target.teamId
+    viewer.permissionLevel === 'section_commander' &&
+    viewer.sectionId !== null &&
+    viewer.sectionId === target.sectionId
   ) return true;
   return false;
 }
@@ -47,8 +47,8 @@ export function canManagePermissions(viewer: Soldier): boolean {
  *
  * כללים:
  * - מפקד פלוגה: יכול לתת כל הרשאה לכל אחד
- * - מפקד צוות: יכול לתת הרשאות לחיילים בצוות שלו בלבד
- * - כל אחד עם הרשאת ניהול: יכול לתת extended_data לחברי צוותו
+ * - מפקד מחלקה: יכול לתת הרשאות לחיילים במחלקה שלו בלבד
+ * - כל אחד עם הרשאת ניהול: יכול לתת extended_data לחברי מחלקתו
  */
 export function canGrantPermission(
   granter: Soldier,
@@ -58,8 +58,8 @@ export function canGrantPermission(
   if (granter.id === target.id) return false;
   if (granter.permissionLevel === 'company_commander') return true;
   if (!granter.extraPermissions.includes('management')) return false;
-  // בעל הרשאת ניהול: רק בצוות שלו
-  return granter.teamId !== null && granter.teamId === target.teamId;
+  // בעל הרשאת ניהול: רק במחלקה שלו
+  return granter.sectionId !== null && granter.sectionId === target.sectionId;
 }
 
 /**
@@ -70,9 +70,17 @@ export function canChangePermissionLevel(granter: Soldier): boolean {
   return granter.permissionLevel === 'company_commander';
 }
 
+/** האם הצופה יכול לראות/להשתמש בשיבוץ יומי וניהול כוח אדם? */
+export function canAccessCommanderFeatures(viewer: Soldier): boolean {
+  return (
+    viewer.permissionLevel === 'company_commander' ||
+    viewer.permissionLevel === 'section_commander'
+  );
+}
+
 export const PERMISSION_LEVEL_LABELS: Record<PermissionLevel, string> = {
   soldier: 'חייל',
-  team_commander: 'מפקד צוות',
+  section_commander: 'מפקד מחלקה',
   company_commander: 'מפקד פלוגה',
 };
 

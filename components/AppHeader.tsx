@@ -46,7 +46,7 @@ export default function AppHeader({
           </div>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
             currentUser.permissionLevel === 'company_commander' ? 'bg-purple-500' :
-            currentUser.permissionLevel === 'team_commander' ? 'bg-blue-500' :
+            currentUser.permissionLevel === 'section_commander' ? 'bg-blue-500' :
             'bg-gray-600'
           }`}>
             {currentUser.firstName[0]}{currentUser.lastName[0]}
