@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { Soldier, TaskTemplate, Assignment } from "@/lib/types";
 import { fullName } from "@/lib/permissions";
+import { useAuth } from "@/lib/useAuth";
+import AppHeader from "@/components/AppHeader";
 import {
   loadData,
   saveData,
@@ -26,6 +28,7 @@ function hebrewDate(dateStr: string) {
 }
 
 export default function SchedulePage() {
+  const { currentUser, logout } = useAuth();
   const [date, setDate] = useState(today());
   const [soldiers, setSoldiers] = useState<Soldier[]>([]);
   const [tasks, setTasks] = useState<TaskTemplate[]>([]);
@@ -111,20 +114,11 @@ export default function SchedulePage() {
     a.startTime.localeCompare(b.startTime)
   );
 
+  if (!currentUser) return null;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gray-900 text-white shadow-lg">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white transition-colors">
-              ← ראשי
-            </Link>
-            <span className="text-gray-600">|</span>
-            <span className="text-lg font-bold">📅 שיבוץ יומי</span>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <AppHeader currentUser={currentUser} onLogout={logout} backHref="/" title="📅 שיבוץ יומי" />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         {/* Date picker */}

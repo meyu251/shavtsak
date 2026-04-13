@@ -1,18 +1,16 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
 import { Soldier, Rank, PermissionLevel, ExtraPermission, Team } from "@/lib/types";
-import {
-  loadData, saveData, addSoldier, updateSoldier, deleteSoldier,
-  loadCurrentUser, saveCurrentUser,
-} from "@/lib/store";
+import { loadData, saveData, addSoldier, updateSoldier, deleteSoldier } from "@/lib/store";
 import {
   fullName, canSeeFullDetails, canEditSoldier, canAddSoldier,
   canDeleteSoldier, canManagePermissions, canGrantPermission,
   canChangePermissionLevel,
   PERMISSION_LEVEL_LABELS, EXTRA_PERMISSION_LABELS, EXTRA_PERMISSION_DESC,
 } from "@/lib/permissions";
+import { useAuth } from "@/lib/useAuth";
+import AppHeader from "@/components/AppHeader";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -47,9 +45,9 @@ function emptyForm(): Omit<Soldier, 'id'> {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function SoldiersPage() {
+  const { currentUser, logout } = useAuth();
   const [soldiers, setSoldiers] = useState<Soldier[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [viewerId, setViewerId] = useState<string>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState<string>('all');
@@ -58,18 +56,17 @@ export default function SoldiersPage() {
   const [form, setForm] = useState<Omit<Soldier, 'id'>>(emptyForm());
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  // Load data
   useEffect(() => {
     const data = loadData();
     setSoldiers(data.soldiers);
     setTeams(data.teams);
-    const cu = loadCurrentUser();
-    const defaultId = cu?.soldierId ?? data.soldiers[0]?.id ?? '';
-    setViewerId(defaultId);
-    saveCurrentUser({ soldierId: defaultId });
   }, []);
 
-  const viewer = useMemo(() => soldiers.find(s => s.id === viewerId) ?? null, [soldiers, viewerId]);
+  // Keep viewer in sync with currentUser (which may update after edits)
+  const viewer = useMemo(
+    () => currentUser ? (soldiers.find(s => s.id === currentUser.id) ?? currentUser) : null,
+    [soldiers, currentUser]
+  );
   const selected = useMemo(() => soldiers.find(s => s.id === selectedId) ?? null, [soldiers, selectedId]);
 
   function persist(updated: Soldier[]) {
@@ -77,12 +74,6 @@ export default function SoldiersPage() {
     data.soldiers = updated;
     saveData(data);
     setSoldiers(updated);
-  }
-
-  function switchUser(id: string) {
-    setViewerId(id);
-    saveCurrentUser({ soldierId: id });
-    setSelectedId(null);
   }
 
   // ── Filtered list ──────────────────────────────────────────────────────────
@@ -169,36 +160,24 @@ export default function SoldiersPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  if (!currentUser) return null;
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-gray-900 text-white shadow-lg flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white transition-colors text-sm">
-              ← ראשי
-            </Link>
-            <span className="text-gray-600">|</span>
-            <span className="font-bold">👥 ניהול כוח אדם</span>
-          </div>
-
-          {/* Current user selector */}
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-400">התחברת כ:</span>
-            <select
-              value={viewerId}
-              onChange={e => switchUser(e.target.value)}
-              className="bg-gray-800 border border-gray-600 text-white rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-            >
-              {soldiers.map(s => (
-                <option key={s.id} value={s.id}>
-                  {fullName(s)} ({PERMISSION_LEVEL_LABELS[s.permissionLevel]})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        currentUser={viewer ?? currentUser}
+        onLogout={logout}
+        backHref="/"
+        title="👥 ניהול כוח אדם"
+        actions={viewer && canAddSoldier(viewer) ? (
+          <button
+            onClick={openAddForm}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+          >
+            + הוסף חייל
+          </button>
+        ) : undefined}
+      />
 
       {/* Body */}
       <div className="flex flex-1 max-w-7xl mx-auto w-full px-4 py-4 gap-4">
@@ -278,15 +257,6 @@ export default function SoldiersPage() {
             )}
           </div>
 
-          {/* Add soldier button */}
-          {viewer && canAddSoldier(viewer) && (
-            <button
-              onClick={openAddForm}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              + הוסף חייל
-            </button>
-          )}
         </aside>
 
         {/* ── Right Panel: Detail View ──────────────────────────────────────── */}

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { TaskTemplate } from "@/lib/types";
 import { loadData, saveData, addTask, updateTask, deleteTask } from "@/lib/store";
+import { useAuth } from "@/lib/useAuth";
+import AppHeader from "@/components/AppHeader";
 
 const emptyForm = (): Omit<TaskTemplate, 'id'> => ({
   name: '',
@@ -22,6 +23,7 @@ const PRESET_TIMES = [
 ];
 
 export default function TasksPage() {
+  const { currentUser, logout } = useAuth();
   const [tasks, setTasks] = useState<TaskTemplate[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskTemplate | null>(null);
@@ -83,24 +85,24 @@ export default function TasksPage() {
     return m > 0 ? `${h} שעות ו-${m} דק'` : `${h} שעות`;
   }
 
+  if (!currentUser) return null;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gray-900 text-white shadow-lg">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-white transition-colors">← ראשי</Link>
-            <span className="text-gray-600">|</span>
-            <span className="text-lg font-bold">📋 ניהול משימות</span>
-          </div>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <AppHeader
+        currentUser={currentUser}
+        onLogout={logout}
+        backHref="/"
+        title="📋 ניהול משימות"
+        actions={
           <button
             onClick={() => { setShowForm(true); setEditingTask(null); setForm(emptyForm()); }}
-            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
           >
             + הוסף משימה
           </button>
-        </div>
-      </header>
+        }
+      />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center gap-4 mb-6">
