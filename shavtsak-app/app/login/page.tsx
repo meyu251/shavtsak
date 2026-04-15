@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { fullName, PERMISSION_LEVEL_LABELS } from "@/lib/permissions";
-import { getPublicSoldiers, login, getMe, GOOGLE_LOGIN_URL, PublicSoldier } from "@/lib/api";
+import { getPublicSoldiers, login, getMe, getGoogleLoginUrl, PublicSoldier } from "@/lib/api";
 import { saveSession } from "@/lib/useAuth";
 
 // ── Google login button ───────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ import { saveSession } from "@/lib/useAuth";
 function GoogleButton() {
   return (
     <a
-      href={GOOGLE_LOGIN_URL}
+      href={getGoogleLoginUrl()}
       className="w-full flex items-center justify-center gap-3 border border-gray-300 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors font-medium text-gray-700 text-sm cursor-pointer"
     >
       <svg width="18" height="18" viewBox="0 0 48 48">
@@ -158,7 +158,7 @@ function LoginPageInner() {
   useEffect(() => {
     getPublicSoldiers()
       .then(setSoldiers)
-      .catch(() => setError("לא ניתן להתחבר לשרת. ודא שהבקאנד פועל."));
+      .catch((e: unknown) => setError(`שגיאה: ${e instanceof Error ? e.message : String(e)}`));
   }, []);
 
   async function handleLogin(soldierId: string) {

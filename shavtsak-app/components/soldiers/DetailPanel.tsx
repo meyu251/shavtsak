@@ -100,7 +100,7 @@ export function DetailPanel({
           <InfoRow label="דרגה" value={soldier.rank} />
           <InfoRow label="תפקיד" value={soldier.role} />
           <InfoRow label="מחלקה" value={sectionName} />
-          <InfoRow label="מייל Google" value={soldier.email || "—"} ltr />
+          <InfoRow label="מייל" value={soldier.email || "—"} ltr />
         </SectionBlock>
 
         {/* Private info — permission-gated */}

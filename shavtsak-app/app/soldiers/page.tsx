@@ -109,6 +109,7 @@ export default function SoldiersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState<string>('all');
+  const [mobileShowList, setMobileShowList] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingSoldier, setEditingSoldier] = useState<Soldier | null>(null);
   const [form, setForm] = useState<Omit<Soldier, 'id'>>(emptyForm());
@@ -364,8 +365,8 @@ export default function SoldiersPage() {
       {/* Body */}
       <div className="flex flex-1 max-w-7xl mx-auto w-full px-4 py-4 gap-4">
 
-        {/* ── Left Panel: Soldier List ─────────────────────────────────────── */}
-        <aside className="w-72 flex-shrink-0 flex flex-col gap-3">
+        {/* ── Left Panel: Sections + Search ────────────────────────────────── */}
+        <aside className={`w-72 flex-shrink-0 flex-col gap-3 ${selected || mobileShowList ? 'hidden md:flex' : 'flex'}`}>
 
           {/* Search */}
           <input
@@ -387,20 +388,24 @@ export default function SoldiersPage() {
                 <ul className="divide-y divide-gray-100">
                   {menuOrder.map((itemId) => {
                     const canDrag = viewer?.permissionLevel === 'company_commander';
+                    const goToList = (filterId: string) => {
+                      setTeamFilter(filterId);
+                      setMobileShowList(true);
+                    };
                     if (itemId === 'all') return (
                       <SortableSectionItem key="all" itemId="all" label="כולם"
-                        count={soldiers.length} canDrag={canDrag} onSelect={() => setTeamFilter('all')} />
+                        count={soldiers.length} canDrag={canDrag} onSelect={() => goToList('all')} />
                     );
                     if (itemId === 'none') return (
                       <SortableSectionItem key="none" itemId="none" label="ללא שיוך"
-                        count={soldiers.filter(s => s.sectionId === null).length} canDrag={canDrag} onSelect={() => setTeamFilter('none')} />
+                        count={soldiers.filter(s => s.sectionId === null).length} canDrag={canDrag} onSelect={() => goToList('none')} />
                     );
                     const sec = sections.find(s => s.id === itemId);
                     if (!sec) return null;
                     return (
                       <SortableSectionItem key={sec.id} itemId={sec.id} label={sec.name}
                         count={soldiers.filter(s => s.sectionId === sec.id).length}
-                        canDrag={canDrag} onSelect={() => setTeamFilter(sec.id)} onSettings={() => openSectionModal(sec)} />
+                        canDrag={canDrag} onSelect={() => goToList(sec.id)} onSettings={() => openSectionModal(sec)} />
                     );
                   })}
                 </ul>
@@ -419,7 +424,14 @@ export default function SoldiersPage() {
         </aside>
 
         {/* ── Middle Panel: Soldiers List ───────────────────────────────────── */}
-        <main className="w-72 flex-shrink-0 min-w-0">
+        <main className={`flex-shrink-0 min-w-0 ${selected ? 'hidden md:block md:w-72' : mobileShowList ? 'w-full md:w-72' : 'hidden md:block md:w-72'}`}>
+          {/* כפתור חזרה למחלקות — מובייל בלבד */}
+          <button
+            onClick={() => setMobileShowList(false)}
+            className="md:hidden mb-3 flex items-center gap-1 text-blue-600 text-sm font-medium cursor-pointer"
+          >
+            ← חזרה למחלקות
+          </button>
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {currentSection && (
               <div className="px-4 py-3 border-b flex items-center justify-between">
@@ -466,7 +478,15 @@ export default function SoldiersPage() {
         </main>
 
         {/* ── Right Panel: Detail View ──────────────────────────────────────── */}
-        <main className="flex-1 min-w-0">
+        <main className={`min-w-0 flex-1 ${!selected ? 'hidden md:flex' : 'flex flex-col'}`}>
+          {selected && (
+            <button
+              onClick={() => { setSelectedId(null); setMobileShowList(true); }}
+              className="md:hidden mb-3 flex items-center gap-1 text-blue-600 text-sm font-medium cursor-pointer"
+            >
+              ← חזרה לרשימה
+            </button>
+          )}
           {!selected ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center text-gray-400">

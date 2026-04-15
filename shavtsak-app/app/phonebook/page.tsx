@@ -8,6 +8,32 @@ import { Soldier, ExtraContact, Section } from "@/lib/types";
 import { fullName, canAccessSoldierManagement, canSeeFullDetails } from "@/lib/permissions";
 import { showToast } from "@/components/Toast";
 
+/**
+ * PhonebookPage component - Displays a searchable phonebook of soldiers organized by sections.
+ * 
+ * Features:
+ * - Search soldiers by name, phone, role, or rank
+ * - View soldier details in a modal (phone always visible, full details conditionally visible based on permissions)
+ * - Manage extra contacts (add/delete) for users with soldier management access
+ * - Organize soldiers by their assigned sections or show as unassigned
+ * - Copy phone numbers to clipboard or initiate calls
+ * 
+ * State:
+ * - `query` - Search query string
+ * - `soldiers` - Array of active soldiers
+ * - `sections` - Array of sections for organization
+ * - `extraContacts` - Array of additional phone contacts
+ * - `selected` - Currently selected soldier for detail view
+ * - `showAddExtra` - Toggle for extra contact form visibility
+ * - `extraName`, `extraPhone` - Form fields for new extra contact
+ * - `loading` - Loading state during initial data fetch
+ * 
+ * Permissions:
+ * - Full details (ID, birth date, address) shown only if `canSeeFullDetails()` returns true
+ * - Add/delete extra contacts only if `canAccessSoldierManagement()` returns true
+ * 
+ * @returns {React.ReactElement} The phonebook interface with search, listings, and detail modal
+ */
 export default function PhonebookPage() {
   const { currentUser, logout } = useAuth();
   const [query, setQuery] = useState("");
@@ -40,7 +66,7 @@ export default function PhonebookPage() {
 
   const q = query.trim();
   const filtered = soldiers.filter(s =>
-    fullName(s).includes(q) || s.phone.includes(q) || s.rank.includes(q) || s.role.includes(q)
+    fullName(s).includes(q) || s.phone.includes(q) || s.role.includes(q) || s.rank.includes(q)
   );
 
   async function handleAddExtra(e?: React.FormEvent<HTMLFormElement>) {
@@ -101,7 +127,7 @@ export default function PhonebookPage() {
                     >
                       <div>
                         <div className="font-medium">{fullName(s)}</div>
-                        <div className="text-xs text-gray-500">{s.rank} · {s.role}</div>
+                        <div className="text-xs text-gray-500">{s.role} · {s.rank}</div>
                       </div>
                       <div className="text-sm text-green-600">{s.phone}</div>
                     </button>
@@ -128,7 +154,7 @@ export default function PhonebookPage() {
                       >
                         <div>
                           <div className="font-medium">{fullName(s)}</div>
-                          <div className="text-xs text-gray-500">{s.rank} · {s.role}</div>
+                          <div className="text-xs text-gray-500">{s.email}</div>
                         </div>
                         <div className="text-sm text-green-600">{s.phone}</div>
                       </button>

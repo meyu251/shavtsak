@@ -5,7 +5,10 @@
 
 import { Soldier, Section, TaskTemplate, Assignment, ExtraContact, HourSlot } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+function getApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  return "/api";
+}
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -14,7 +17,7 @@ function getToken(): string | null {
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${getApiBase()}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -43,7 +46,9 @@ export async function getMe(): Promise<Soldier> {
 }
 
 /** כתובת הכניסה עם Google — מפנה לבקאנד שמפנה לגוגל */
-export const GOOGLE_LOGIN_URL = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/auth/google`;
+export function getGoogleLoginUrl(): string {
+  return `${getApiBase()}/auth/google`;
+}
 
 /** רשימה מינימלית ללא אימות — לדף הכניסה בלבד */
 export async function getPublicSoldiers(): Promise<PublicSoldier[]> {

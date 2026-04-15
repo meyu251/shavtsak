@@ -18,9 +18,12 @@ app = FastAPI(
 )
 
 # CORS — מאפשר לפרונטאנד Next.js לדבר עם הבקאנד
+import os
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # כתובת הפרונטאנד בפיתוח
+    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
+    allow_origin_regex=r"http://\d+\.\d+\.\d+\.\d+:3000",  # כל IP מקומי בפיתוח
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
