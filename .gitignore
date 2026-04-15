@@ -1,41 +1,43 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Frontend
+shavtsak-app/node_modules/
+shavtsak-app/.next/
+shavtsak-app/out/
+shavtsak-app/build/
+shavtsak-app/.pnp
+shavtsak-app/.pnp.*
+shavtsak-app/.yarn/*
+!shavtsak-app/.yarn/patches
+!shavtsak-app/.yarn/plugins
+!shavtsak-app/.yarn/releases
+!shavtsak-app/.yarn/versions
+shavtsak-app/coverage/
+shavtsak-app/*.tsbuildinfo
+shavtsak-app/next-env.d.ts
+shavtsak-app/.vercel/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Backend
+shavtsak-backend/venv/
+shavtsak-backend/__pycache__/
+shavtsak-backend/**/__pycache__/
+shavtsak-backend/*.db
+shavtsak-backend/*.db-journal
+shavtsak-backend/.pytest_cache/
 
-# testing
-/coverage
+# Env files (secrets)
+.env
+.env.*
+shavtsak-app/.env*
+shavtsak-backend/.env*
 
-# next.js
-/.next/
-/out/
+# Claude Code local settings
+.claude/settings.local.json
 
-# production
-/build
-
-# misc
+# OS
 .DS_Store
 *.pem
+Thumbs.db
 
-# debug
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts

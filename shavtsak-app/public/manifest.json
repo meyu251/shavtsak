@@ -1,0 +1,24 @@
+{
+  "name": "שבצק - מערכת שיבוץ כוחות",
+  "short_name": "שבצק",
+  "description": "מערכת ניהול שיבוץ משימות לפלוגה",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#6d28d9",
+  "lang": "he",
+  "dir": "rtl",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"cd /d \\\\\"c:\\\\Users\\\\meyu2\\\\Desktop\\\\מאיר\\\\projects\\\\shavtsak\\\\shavtsak-app\\\\\" && npm run build\")"
+    ]
+  }
+}
