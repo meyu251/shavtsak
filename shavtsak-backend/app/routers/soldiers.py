@@ -4,6 +4,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
+from app.isolation import get_visible_soldier_ids
 import uuid
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
@@ -18,6 +19,7 @@ def soldier_to_out(s: models.Soldier) -> schemas.SoldierOut:
         permissionLevel=s.permissionLevel,
         extraPermissions=[ep.permission for ep in s.extra_permissions],
         email=s.email,
+        managedCompanyId=s.managed_company_id,
     )
 
 
@@ -33,12 +35,16 @@ def get_soldiers_public(db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=List[schemas.SoldierOut])
-def get_soldiers(db: Session = Depends(get_db), _=Depends(get_current_soldier)):
-    return [soldier_to_out(s) for s in db.query(models.Soldier).all()]
+def get_soldiers(db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    visible = get_visible_soldier_ids(actor, db)
+    q = db.query(models.Soldier)
+    if visible is not None:
+        q = q.filter(models.Soldier.id.in_(visible))
+    return [soldier_to_out(s) for s in q.all()]
 
 
 @router.post("", response_model=schemas.SoldierOut)
-def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
+def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
     soldier = models.Soldier(
         id=str(uuid.uuid4()),
         firstName=body.firstName, lastName=body.lastName,
@@ -47,6 +53,7 @@ def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), _=De
         personalNumber=body.personalNumber, idNumber=body.idNumber,
         address=body.address, birthDate=body.birthDate,
         permissionLevel=body.permissionLevel, email=body.email,
+        managed_company_id=body.managedCompanyId,
     )
     db.add(soldier)
     db.flush()
@@ -58,7 +65,12 @@ def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), _=De
 
 
 @router.put("/{soldier_id}", response_model=schemas.SoldierOut)
-def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
+def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    # בדיקת הרשאת גישה
+    visible = get_visible_soldier_ids(actor, db)
+    if visible is not None and soldier_id not in visible:
+        raise HTTPException(status_code=403, detail="אין הרשאה לערוך חייל זה")
+
     soldier = db.query(models.Soldier).filter(models.Soldier.id == soldier_id).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")
@@ -66,6 +78,7 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
                   "sectionId", "personalNumber", "idNumber", "address", "birthDate",
                   "permissionLevel", "email"]:
         setattr(soldier, field, getattr(body, field))
+    soldier.managed_company_id = body.managedCompanyId
     # עדכון הרשאות נוספות — מחיקה ויצירה מחדש
     for ep in soldier.extra_permissions:
         db.delete(ep)
@@ -78,7 +91,12 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
 
 
 @router.delete("/{soldier_id}")
-def delete_soldier(soldier_id: str, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
+def delete_soldier(soldier_id: str, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    # בדיקת הרשאת גישה
+    visible = get_visible_soldier_ids(actor, db)
+    if visible is not None and soldier_id not in visible:
+        raise HTTPException(status_code=403, detail="אין הרשאה למחוק חייל זה")
+
     soldier = db.query(models.Soldier).filter(models.Soldier.id == soldier_id).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")

@@ -4,6 +4,7 @@ from typing import List, Optional
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
+from app.isolation import get_visible_soldier_ids
 import uuid
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -28,11 +29,21 @@ def assignment_to_out(a: models.Assignment) -> schemas.AssignmentOut:
 def get_assignments(
     date: Optional[str] = Query(None, description="YYYY-MM-DD"),
     db: Session = Depends(get_db),
-    _=Depends(get_current_soldier),
+    actor: models.Soldier = Depends(get_current_soldier),
 ):
+    visible = get_visible_soldier_ids(actor, db)
+
     q = db.query(models.Assignment)
     if date:
         q = q.filter(models.Assignment.date == date)
+    if visible is not None:
+        # שמור שיבוץ אם לפחות אחד מהחיילים בו נמצא בתחום הנראות
+        q = (
+            q.join(models.AssignmentSoldier,
+                   models.Assignment.id == models.AssignmentSoldier.assignment_id)
+            .filter(models.AssignmentSoldier.soldier_id.in_(visible))
+            .distinct()
+        )
     return [assignment_to_out(a) for a in q.all()]
 
 

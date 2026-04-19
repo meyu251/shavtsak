@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { fullName, PERMISSION_LEVEL_LABELS } from "@/lib/permissions";
-import { getPublicSoldiers, login, getMe, getGoogleLoginUrl, PublicSoldier } from "@/lib/api";
+import { getPublicSoldiers, login, getMe, getGoogleLoginUrl, claimSoldier, PublicSoldier } from "@/lib/api";
 import { saveSession } from "@/lib/useAuth";
 
 // ── Google login button ───────────────────────────────────────────────────────
@@ -112,25 +112,130 @@ function LoginSelector({ soldiers, onLogin }: { soldiers: PublicSoldier[]; onLog
   );
 }
 
+// ── Claim form — קישור חשבון Google לחייל קיים ────────────────────────────────
+
+function ClaimForm({ userId, onSuccess, onError }: {
+  userId: string;
+  onSuccess: () => void;
+  onError: (msg: string) => void;
+}) {
+  const router = useRouter();
+  const [personalNumber, setPersonalNumber] = useState("");
+  const [idNumber, setIdNumber] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  async function handleClaim(e: React.SyntheticEvent) {
+    e.preventDefault();
+    if (!personalNumber.trim() && !idNumber.trim()) {
+      setLocalError("יש למלא לפחות מספר אישי או תעודת זהות.");
+      return;
+    }
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      const { access_token, soldier } = await claimSoldier(
+        userId,
+        personalNumber.trim() || undefined,
+        idNumber.trim() || undefined,
+      );
+      saveSession(access_token, soldier);
+      onSuccess();
+      router.push("/");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "שגיאה";
+      if (msg.includes("כבר מקושר")) {
+        setLocalError("המספר כבר מקושר למשתמש אחר — פנה למפקד.");
+      } else if (msg.includes("לא נמצא")) {
+        setLocalError("לא נמצא חייל עם הפרטים שהזנת. בדוק שוב או פנה למפקד.");
+      } else {
+        onError(msg);
+      }
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+      <div className="bg-gray-900 text-white px-6 py-5 text-center">
+        <div className="text-4xl mb-2">🪖</div>
+        <h1 className="text-xl font-bold">שבצק</h1>
+        <p className="text-gray-400 text-sm mt-0.5">קישור חשבון לחייל</p>
+      </div>
+      <form onSubmit={handleClaim} className="p-5 space-y-4">
+        <p className="text-sm text-gray-600 text-center">
+          כדי להשלים את הכניסה, הזן את הפרטים שלך כדי שנוכל לאמת את זהותך:
+        </p>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי</label>
+          <input
+            type="text"
+            dir="ltr"
+            value={personalNumber}
+            onChange={e => setPersonalNumber(e.target.value)}
+            placeholder="לדוגמה: 1234567"
+            className={inputCls}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-400">או</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">תעודת זהות</label>
+          <input
+            type="text"
+            dir="ltr"
+            value={idNumber}
+            onChange={e => setIdNumber(e.target.value)}
+            placeholder="לדוגמה: 123456789"
+            className={inputCls}
+          />
+        </div>
+
+        {localError && (
+          <p className="text-red-600 text-sm text-center bg-red-50 rounded-lg px-3 py-2">{localError}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer"
+        >
+          {submitting ? "מאמת..." : "כניסה"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // ── Main page (wrapped in Suspense for useSearchParams) ───────────────────────
+
+type PageState =
+  | { mode: "loading" }
+  | { mode: "selector"; soldiers: PublicSoldier[] }
+  | { mode: "claim"; userId: string }
+  | { mode: "error"; message: string };
 
 function LoginPageInner() {
   const router = useRouter();
   const params = useSearchParams();
-  const [soldiers, setSoldiers] = useState<PublicSoldier[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [state, setState] = useState<PageState>({ mode: "loading" });
 
   // טיפול ב-redirect מ-Google OAuth
   useEffect(() => {
     const token = params.get("token");
     const err   = params.get("error");
     const email = params.get("email");
+    const step  = params.get("step");
+    const userId = params.get("userId");
 
     if (token) {
-      // שמירת הטוקן זמנית ב-localStorage כדי ש-getMe() יוכל להשתמש בו
       localStorage.setItem("shavtsak_token", token);
-      setLoading(true);
       getMe()
         .then(soldier => {
           saveSession(token, soldier);
@@ -138,28 +243,30 @@ function LoginPageInner() {
         })
         .catch(() => {
           localStorage.removeItem("shavtsak_token");
-          setError("שגיאה בקבלת פרטי המשתמש. נסה שוב.");
-          setLoading(false);
+          setState({ mode: "error", message: "שגיאה בקבלת פרטי המשתמש. נסה שוב." });
         });
       return;
     }
 
+    if (step === "claim" && userId) {
+      setState({ mode: "claim", userId });
+      return;
+    }
+
     if (err) {
-      if (err === "not_registered") {
-        setError(`המייל ${email ?? ""} לא מקושר לאף חייל במערכת. בקש מהמפקד לקשר את המייל שלך.`);
-      } else if (err === "google_cancelled") {
-        setError("הכניסה עם Google בוטלה.");
+      if (err === "google_cancelled") {
+        // ביטול — חזור לסלקטור
       } else {
-        setError("שגיאה בכניסה עם Google. נסה שוב.");
+        setState({ mode: "error", message: `שגיאה בכניסה עם Google. ${email ? `המייל ${email} אינו מוכר.` : "נסה שוב."}` });
+        return;
       }
     }
-  }, [params, router]);
 
-  useEffect(() => {
+    // טעינת רשימת חיילים לסלקטור
     getPublicSoldiers()
-      .then(setSoldiers)
-      .catch((e: unknown) => setError(`שגיאה: ${e instanceof Error ? e.message : String(e)}`));
-  }, []);
+      .then(soldiers => setState({ mode: "selector", soldiers }))
+      .catch(() => setState({ mode: "error", message: "לא ניתן להתחבר לשרת." }));
+  }, [params, router]);
 
   async function handleLogin(soldierId: string) {
     try {
@@ -167,48 +274,51 @@ function LoginPageInner() {
       saveSession(access_token, soldier);
       router.push("/");
     } catch {
-      setError("שגיאה בכניסה, נסה שוב.");
+      setState({ mode: "error", message: "שגיאה בכניסה, נסה שוב." });
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-950 flex items-center justify-center">
-        <div className="text-white text-lg">מתחבר עם Google...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-950 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
-          <div className="text-4xl mb-3">⚠️</div>
-          <p className="text-gray-700 font-medium">{error}</p>
-          <button
-            onClick={() => { setError(null); setSoldiers(null); getPublicSoldiers().then(setSoldiers).catch(() => setError("לא ניתן להתחבר לשרת.")); }}
-            className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg text-sm cursor-pointer"
-          >
-            חזור לכניסה
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (soldiers === null) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-950 flex items-center justify-center">
-        <div className="text-white text-lg">טוען...</div>
-      </div>
-    );
-  }
-
-  return (
+  const wrapper = (children: React.ReactNode) => (
     <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-950 flex items-center justify-center p-4">
-      <LoginSelector soldiers={soldiers} onLogin={handleLogin} />
+      {children}
     </div>
   );
+
+  if (state.mode === "loading") {
+    return wrapper(<div className="text-white text-lg">טוען...</div>);
+  }
+
+  if (state.mode === "claim") {
+    return wrapper(
+      <ClaimForm
+        userId={state.userId}
+        onSuccess={() => {}}
+        onError={msg => setState({ mode: "error", message: msg })}
+      />
+    );
+  }
+
+  if (state.mode === "error") {
+    return wrapper(
+      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
+        <div className="text-4xl mb-3">⚠️</div>
+        <p className="text-gray-700 font-medium">{state.message}</p>
+        <button
+          onClick={() => {
+            setState({ mode: "loading" });
+            getPublicSoldiers()
+              .then(soldiers => setState({ mode: "selector", soldiers }))
+              .catch(() => setState({ mode: "error", message: "לא ניתן להתחבר לשרת." }));
+          }}
+          className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg text-sm cursor-pointer"
+        >
+          חזור לכניסה
+        </button>
+      </div>
+    );
+  }
+
+  return wrapper(<LoginSelector soldiers={state.soldiers} onLogin={handleLogin} />);
 }
 
 export default function LoginPage() {

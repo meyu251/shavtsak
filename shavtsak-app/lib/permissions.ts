@@ -111,6 +111,11 @@ export function canAccessTaskManagement(viewer: Soldier): boolean {
   );
 }
 
+/** האם הצופה יכול לנהל פלוגות (יצירה/עריכה/מחיקה)? */
+export function canManageCompanies(viewer: Soldier): boolean {
+  return viewer.permissionLevel === 'company_commander';
+}
+
 /** @deprecated השתמש בפונקציות הספציפיות במקום */
 export function canAccessCommanderFeatures(viewer: Soldier): boolean {
   return canAccessSoldierManagement(viewer);

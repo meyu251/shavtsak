@@ -6,10 +6,7 @@ main.py — נקודת הכניסה של השרת.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
-from app.routers import auth, soldiers, sections, tasks, assignments, contacts
-
-# יצירת כל הטבלאות ב-DB אם לא קיימות
-Base.metadata.create_all(bind=engine)
+from app.routers import auth, soldiers, sections, tasks, assignments, contacts, companies
 
 app = FastAPI(
     title="שבצק API",
@@ -33,6 +30,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(soldiers.router)
 app.include_router(sections.router)
+app.include_router(companies.router)
 app.include_router(tasks.router)
 app.include_router(assignments.router)
 app.include_router(contacts.router)

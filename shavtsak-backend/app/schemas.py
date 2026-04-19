@@ -3,21 +3,42 @@ schemas.py — הגדרת צורת הנתונים שנכנסים ויוצאים 
 Pydantic מוודא שהנתונים תקינים לפני שמגיעים לקוד.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
+
+
+# ── Companies ─────────────────────────────────────────────────────────────────
+
+class CompanyCreate(BaseModel):
+    name: str
+    battalion_id: Optional[str] = None
+
+class CompanyUpdate(BaseModel):
+    name: str
+    battalion_id: Optional[str] = None
+
+class CompanyOut(BaseModel):
+    id: str
+    name: str
+    # validation_alias → קריאה מ-ORM (snake_case), פלט JSON → camelCase
+    battalionId: Optional[str] = Field(None, validation_alias='battalion_id')
+    model_config = {"from_attributes": True}
 
 
 # ── Sections ──────────────────────────────────────────────────────────────────
 
 class SectionCreate(BaseModel):
     name: str
+    company_id: Optional[str] = None
 
 class SectionUpdate(BaseModel):
     name: str
+    company_id: Optional[str] = None
 
 class SectionOut(BaseModel):
     id: str
     name: str
+    companyId: Optional[str] = Field(None, validation_alias='company_id')
     model_config = {"from_attributes": True}
 
 
@@ -38,6 +59,7 @@ class SoldierCreate(BaseModel):
     permissionLevel: str = "soldier"
     extraPermissions: List[str] = []
     email: Optional[str] = None
+    managedCompanyId: Optional[str] = None
 
 class SoldierUpdate(SoldierCreate):
     pass
@@ -58,6 +80,7 @@ class SoldierOut(BaseModel):
     permissionLevel: str
     extraPermissions: List[str]
     email: Optional[str]
+    managedCompanyId: Optional[str] = Field(None, validation_alias='managed_company_id')
     model_config = {"from_attributes": True}
 
 
@@ -138,6 +161,11 @@ class ContactOut(BaseModel):
 
 class LoginRequest(BaseModel):
     soldierId: str
+
+class ClaimRequest(BaseModel):
+    userId: str
+    personalNumber: Optional[str] = None
+    idNumber: Optional[str] = None
 
 class TokenOut(BaseModel):
     access_token: str

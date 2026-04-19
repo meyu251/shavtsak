@@ -20,9 +20,16 @@ export type PermissionLevel = 'soldier' | 'section_commander' | 'company_command
 /** הרשאות נוספות — ניתנות ידנית בתוקף עד ביטול */
 export type ExtraPermission = 'extended_data' | 'management' | 'schedule' | 'tasks';
 
+export interface Company {
+  id: string;
+  name: string;             // "פלוגה א'", "פלוגה ב'", ...
+  battalionId?: string | null; // לשימוש עתידי — ID גדוד
+}
+
 export interface Section {
   id: string;
-  name: string; // "מחלקה 1", "מחלקה 2", ...
+  name: string;             // "מחלקה 1", "מחלקה 2", ...
+  companyId?: string | null; // ID הפלוגה שהמחלקה שייכת אליה
 }
 
 export interface Soldier {
@@ -35,15 +42,17 @@ export interface Soldier {
   isActive: boolean;
   sectionId: string | null;
   // פרטים אישיים — גישה לפי הרשאה
-  personalNumber?: string; // מספר אישי
-  idNumber?: string;       // תעודת זהות
-  address?: string;        // כתובת
-  birthDate?: string;      // תאריך לידה YYYY-MM-DD
+  personalNumber?: string;  // מספר אישי
+  idNumber?: string;        // תעודת זהות
+  address?: string;         // כתובת
+  birthDate?: string;       // תאריך לידה YYYY-MM-DD
   // הרשאות
   permissionLevel: PermissionLevel;
   extraPermissions: ExtraPermission[];
-  // Google OAuth
+  // Google OAuth (deprecated — נמצא בטבלת users)
   email?: string;
+  // היררכיה — מפקד פלוגה שמנהל פלוגה ספציפית
+  managedCompanyId?: string | null;
 }
 
 export interface ExtraContact {
@@ -81,6 +90,7 @@ export interface Assignment {
 export interface AppData {
   soldiers: Soldier[];
   sections: Section[];
+  companies: Company[];
   taskTemplates: TaskTemplate[];
   assignments: Assignment[];
   extraContacts: ExtraContact[];

@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Soldier, Rank, PermissionLevel, ExtraPermission } from "@/lib/types";
-import type { Section as SectionType } from "@/lib/types";
+import type { Section as SectionType, Company } from "@/lib/types";
 import * as api from "@/lib/api";
 import {
   fullName, canAddSoldier, canGrantPermission, canChangePermissionLevel,
-  PERMISSION_LEVEL_LABELS,
+  canManageCompanies, PERMISSION_LEVEL_LABELS,
 } from "@/lib/permissions";
 import { useAuth } from "@/lib/useAuth";
 import AppHeader from "@/components/AppHeader";
@@ -61,7 +61,7 @@ function emptyForm(): Omit<Soldier, 'id'> {
     isActive: true, sectionId: null,
     personalNumber: '', idNumber: '', address: '', birthDate: '',
     permissionLevel: 'soldier', extraPermissions: [],
-    email: '',
+    email: '', managedCompanyId: null,
   };
 }
 
@@ -99,8 +99,10 @@ export default function SoldiersPage() {
   const { currentUser, logout } = useAuth();
   const [soldiers, setSoldiers] = useState<Soldier[]>([]);
   const [sections, setSections] = useState<SectionType[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [newSectionName, setNewSectionName] = useState('');
   const [sectionModal, setSectionModal] = useState<SectionType | null>(null);
+  const [sectionCompanyId, setSectionCompanyId] = useState<string | null>(null);
   const [sectionConfirmDelete, setSectionConfirmDelete] = useState<string | null>(null);
   const [showAddSectionModal, setShowAddSectionModal] = useState(false);
   const [memberToAdd, setMemberToAdd] = useState<string>('');
@@ -125,10 +127,11 @@ export default function SoldiersPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.getSoldiers(), api.getSections()])
-      .then(([s, sec]) => {
+    Promise.all([api.getSoldiers(), api.getSections(), api.getCompanies()])
+      .then(([s, sec, comp]) => {
         setSoldiers(s);
         setSections(sec);
+        setCompanies(comp);
         const saved = localStorage.getItem('shavtsak_menu_order');
         const parsed: string[] = saved ? JSON.parse(saved) : [];
         const allIds = ['all', 'none', ...sec.map(x => x.id)];
@@ -193,7 +196,7 @@ export default function SoldiersPage() {
     setShowForm(true);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     if (!form.firstName.trim()) return;
     setSaving(true);
@@ -226,12 +229,13 @@ export default function SoldiersPage() {
   }
 
   // ── Sections management (company commander) ─────────────────────────────────
-  async function handleAddSection(e?: React.FormEvent) {
+  async function handleAddSection(e?: React.SyntheticEvent) {
     if (e) e.preventDefault();
     if (!newSectionName.trim() || !viewer) return;
     if (viewer.permissionLevel !== 'company_commander') return;
     try {
-      const created = await api.addSection({ name: newSectionName.trim() });
+      const companyId = viewer.managedCompanyId ?? null;
+      const created = await api.addSection({ name: newSectionName.trim(), companyId });
       setSections(prev => [...prev, created]);
       setMenuOrder(prev => [...prev, created.id]);
       setNewSectionName('');
@@ -256,18 +260,20 @@ export default function SoldiersPage() {
 
   function openSectionModal(sec: SectionType, edit: boolean = false) {
     setSectionModal(sec);
+    setSectionCompanyId(sec.companyId ?? null);
     setMemberToAdd('');
     setSectionEditMode(Boolean(edit));
     setSectionEditName(sec.name);
   }
 
-  async function handleUpdateSection(name?: string) {
+  async function handleUpdateSection(name?: string, companyId?: string | null) {
     if (!sectionModal) return;
     const newName = name ?? sectionModal.name;
+    const newCompanyId = companyId !== undefined ? companyId : sectionCompanyId;
     try {
-      const updated = await api.updateSection(sectionModal.id, { name: newName });
+      const updated = await api.updateSection(sectionModal.id, { name: newName, companyId: newCompanyId });
       setSections(prev => prev.map(s => s.id === updated.id ? updated : s));
-      setSectionModal(prev => prev ? { ...prev, name: newName } : prev);
+      setSectionModal(prev => prev ? { ...prev, name: newName, companyId: newCompanyId } : prev);
     } catch {
       showToast('שגיאה בעדכון המחלקה');
     }
@@ -402,8 +408,10 @@ export default function SoldiersPage() {
                     );
                     const sec = sections.find(s => s.id === itemId);
                     if (!sec) return null;
+                    const companyName = sec.companyId ? companies.find(c => c.id === sec.companyId)?.name : undefined;
+                    const label = companyName ? `${sec.name} (${companyName})` : sec.name;
                     return (
-                      <SortableSectionItem key={sec.id} itemId={sec.id} label={sec.name}
+                      <SortableSectionItem key={sec.id} itemId={sec.id} label={label}
                         count={soldiers.filter(s => s.sectionId === sec.id).length}
                         canDrag={canDrag} onSelect={() => goToList(sec.id)} onSettings={() => openSectionModal(sec)} />
                     );
@@ -660,6 +668,25 @@ export default function SoldiersPage() {
               <button onClick={() => setSectionConfirmDelete(sectionModal.id)} className="bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-1.5 rounded-lg">🗑 מחק</button>
             </div>
           </div>
+
+          {/* Company assignment (company_commander only, when companies exist) */}
+          {viewer && canManageCompanies(viewer) && companies.length > 0 && (
+            <div className="mb-3 pb-3 border-b">
+              <label className="block text-xs font-medium text-gray-500 mb-1">פלוגה</label>
+              <select
+                value={sectionCompanyId ?? ''}
+                onChange={e => {
+                  const val = e.target.value || null;
+                  setSectionCompanyId(val);
+                  handleUpdateSection(undefined, val);
+                }}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
+              >
+                <option value="">ללא פלוגה</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
 
           {!sectionEditMode ? (
             <div className="space-y-3">

@@ -14,6 +14,18 @@ def new_id():
     return str(uuid.uuid4())
 
 
+# ── Companies (פלוגות) ────────────────────────────────────────────────────────
+
+class Company(Base):
+    __tablename__ = "companies"
+
+    id = Column(String, primary_key=True, default=new_id)
+    name = Column(String, nullable=False)
+    battalion_id = Column(String, nullable=True)  # ללא FK — לשימוש עתידי עם טבלת גדודים
+
+    sections = relationship("Section", back_populates="company")
+
+
 # ── Sections (מחלקות) ─────────────────────────────────────────────────────────
 
 class Section(Base):
@@ -21,8 +33,10 @@ class Section(Base):
 
     id = Column(String, primary_key=True, default=new_id)
     name = Column(String, nullable=False)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=True)
 
     soldiers = relationship("Soldier", back_populates="section")
+    company = relationship("Company", back_populates="sections")
 
 
 # ── Soldiers (חיילים) ─────────────────────────────────────────────────────────
@@ -47,10 +61,30 @@ class Soldier(Base):
 
     # הרשאות
     permissionLevel = Column(String, default="soldier")  # soldier / section_commander / company_commander
-    email = Column(String, nullable=True, unique=True)   # לשימוש עתידי עם Google OAuth
+    email = Column(String, nullable=True, unique=True)   # deprecated — ראה טבלת users
+    managed_company_id = Column(String, ForeignKey("companies.id"), nullable=True)
+    # ^ מגדיר את תחום ה-scope של מפקד פלוגה (כאשר אין לו sectionId)
 
     section = relationship("Section", back_populates="soldiers")
     extra_permissions = relationship("SoldierExtraPermission", back_populates="soldier", cascade="all, delete-orphan")
+
+
+# ── Users (משתמשים) ───────────────────────────────────────────────────────────
+
+class User(Base):
+    """
+    משתמש שמחובר לאפליקציה.
+    נפרד מ-Soldier — חייל יכול להיות ברשימה בלי להיות משתמש.
+    Claiming: קישור User ל-Soldier דרך personalNumber/idNumber.
+    """
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=new_id)
+    email = Column(String, nullable=True, unique=True)
+    google_sub = Column(String, nullable=True, unique=True)  # Google user ID ("id" מ-userinfo)
+    soldier_id = Column(String, ForeignKey("soldiers.id"), nullable=True, unique=True)
+
+    soldier = relationship("Soldier")
 
 
 class SoldierExtraPermission(Base):
@@ -147,3 +181,8 @@ Index("ix_soldier_email", Soldier.email)
 Index("ix_assignment_soldier_assignment", AssignmentSoldier.assignment_id)
 Index("ix_hour_slot_assignment", HourSlot.assignment_id)
 Index("ix_hour_slot_soldier_slot", HourSlotSoldier.hour_slot_id)
+# Hierarchy + isolation indexes
+Index("ix_section_company", Section.company_id)
+Index("ix_soldier_managed_company", Soldier.managed_company_id)
+Index("ix_user_soldier", User.soldier_id)
+Index("ix_user_google_sub", User.google_sub)

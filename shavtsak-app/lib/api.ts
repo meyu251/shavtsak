@@ -3,7 +3,7 @@
  * כל פונקציה מחזירה Promise — חייבים await בשימוש.
  */
 
-import { Soldier, Section, TaskTemplate, Assignment, ExtraContact, HourSlot } from "./types";
+import { Soldier, Section, Company, TaskTemplate, Assignment, ExtraContact, HourSlot } from "./types";
 
 function getApiBase(): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
@@ -50,6 +50,15 @@ export function getGoogleLoginUrl(): string {
   return `${getApiBase()}/auth/google`;
 }
 
+/** קישור משתמש Google לחייל קיים לפי מספר אישי/ת"ז */
+export async function claimSoldier(
+  userId: string,
+  personalNumber?: string,
+  idNumber?: string,
+): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", "/auth/claim", { userId, personalNumber, idNumber });
+}
+
 /** רשימה מינימלית ללא אימות — לדף הכניסה בלבד */
 export async function getPublicSoldiers(): Promise<PublicSoldier[]> {
   return req("GET", "/soldiers/public");
@@ -79,16 +88,34 @@ export async function getSections(): Promise<Section[]> {
   return req("GET", "/sections");
 }
 
-export async function addSection(data: { name: string }): Promise<Section> {
-  return req("POST", "/sections", data);
+export async function addSection(data: { name: string; companyId?: string | null }): Promise<Section> {
+  return req("POST", "/sections", { name: data.name, company_id: data.companyId ?? null });
 }
 
-export async function updateSection(id: string, data: { name: string }): Promise<Section> {
-  return req("PUT", `/sections/${id}`, data);
+export async function updateSection(id: string, data: { name: string; companyId?: string | null }): Promise<Section> {
+  return req("PUT", `/sections/${id}`, { name: data.name, company_id: data.companyId ?? null });
 }
 
 export async function deleteSection(id: string): Promise<void> {
   return req("DELETE", `/sections/${id}`);
+}
+
+// ── Companies ─────────────────────────────────────────────────────────────────
+
+export async function getCompanies(): Promise<Company[]> {
+  return req("GET", "/companies");
+}
+
+export async function addCompany(data: { name: string; battalionId?: string | null }): Promise<Company> {
+  return req("POST", "/companies", { name: data.name, battalion_id: data.battalionId ?? null });
+}
+
+export async function updateCompany(id: string, data: { name: string; battalionId?: string | null }): Promise<Company> {
+  return req("PUT", `/companies/${id}`, { name: data.name, battalion_id: data.battalionId ?? null });
+}
+
+export async function deleteCompany(id: string): Promise<void> {
+  return req("DELETE", `/companies/${id}`);
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
