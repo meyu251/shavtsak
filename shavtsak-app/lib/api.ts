@@ -41,13 +41,47 @@ export async function login(soldierId: string): Promise<{ access_token: string; 
 }
 
 /** מחזיר את החייל המחובר לפי ה-JWT הנוכחי — לשימוש אחרי כניסה עם Google */
-export async function getMe(): Promise<Soldier> {
+export async function getMe(): Promise<Soldier & { hasPassword: boolean; isDeveloper: boolean }> {
   return req("GET", "/auth/me");
 }
 
 /** כתובת הכניסה עם Google — מפנה לבקאנד שמפנה לגוגל */
 export function getGoogleLoginUrl(): string {
   return `${getApiBase()}/auth/google`;
+}
+
+/** התחזות לחייל אחר — זמין רק למשתמש עם isDeveloper=true */
+export async function impersonate(soldierId: string): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", `/auth/impersonate/${soldierId}`);
+}
+
+/** כניסה עם מספר אישי / ת"ז + סיסמא */
+export async function passwordLogin(identifier: string, password: string): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", "/auth/password/login", { identifier, password });
+}
+
+/** רישום ראשוני — מציאת חייל לפי מספר אישי/ת"ז והגדרת סיסמא */
+export async function register(identifier: string, password: string): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", "/auth/register", { identifier, password });
+}
+
+/** הגדרת סיסמא למשתמש המחובר */
+export async function setPassword(password: string): Promise<void> {
+  return req("POST", "/auth/password/set", { password });
+}
+
+/** מפקד מייצר קוד איפוס לחייל */
+export async function createResetCode(soldierId: string): Promise<{ code: string }> {
+  return req("POST", "/auth/reset-code/create", { soldierId });
+}
+
+/** שימוש בקוד איפוס להגדרת סיסמא חדשה */
+export async function useResetCode(
+  identifier: string,
+  code: string,
+  newPassword: string,
+): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", "/auth/reset-code/use", { identifier, code, newPassword });
 }
 
 /** קישור משתמש Google לחייל קיים לפי מספר אישי/ת"ז */

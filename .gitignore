@@ -29,8 +29,10 @@ shavtsak-backend/.pytest_cache/
 shavtsak-app/.env*
 shavtsak-backend/.env*
 
-# Claude Code local settings
-.claude/settings.local.json
+# Claude Code
+.claude/
+CLAUDE.md
+AGENTS.md
 
 # OS
 .DS_Store
@@ -41,3 +43,6 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+
+run-shavtsak.txt

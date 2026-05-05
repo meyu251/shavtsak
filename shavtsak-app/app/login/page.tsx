@@ -3,11 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { fullName, PERMISSION_LEVEL_LABELS } from "@/lib/permissions";
-import { getPublicSoldiers, login, getMe, getGoogleLoginUrl, claimSoldier, PublicSoldier } from "@/lib/api";
+import {
+  getMe, getGoogleLoginUrl, claimSoldier,
+  passwordLogin, register as apiRegister, setPassword as apiSetPassword, useResetCode,
+} from "@/lib/api";
 import { saveSession } from "@/lib/useAuth";
+import { Soldier } from "@/lib/types";
 
-// ── Google login button ───────────────────────────────────────────────────────
+// ── Google button ─────────────────────────────────────────────────────────────
 
 function GoogleButton() {
   return (
@@ -26,106 +29,171 @@ function GoogleButton() {
   );
 }
 
-// ── Manual selector ───────────────────────────────────────────────────────────
+// ── Password login form ───────────────────────────────────────────────────────
 
-function LoginSelector({ soldiers, onLogin }: { soldiers: PublicSoldier[]; onLogin: (id: string) => void }) {
-  const [search, setSearch] = useState("");
+function PasswordLoginForm({ onSuccess, onForgot, onError }: {
+  onSuccess: (token: string, soldier: Soldier) => void;
+  onForgot: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
-  const filtered = soldiers.filter(s =>
-    `${s.firstName} ${s.lastName}`.includes(search) ||
-    s.rank.includes(search) ||
-    s.role.includes(search)
-  );
-
-  const byLevel = {
-    company_commander: filtered.filter(s => s.permissionLevel === "company_commander"),
-    section_commander: filtered.filter(s => s.permissionLevel === "section_commander"),
-    soldier: filtered.filter(s => s.permissionLevel === "soldier"),
-  };
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!identifier.trim() || !password) return;
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      const { access_token, soldier } = await passwordLogin(identifier.trim(), password);
+      onSuccess(access_token, { ...soldier, hasPassword: true });
+    } catch (e: unknown) {
+      setLocalError(e instanceof Error ? e.message : "שגיאה בכניסה");
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-      <div className="bg-gray-900 text-white px-6 py-5 text-center">
-        <div className="text-4xl mb-2">🪖</div>
-        <h1 className="text-xl font-bold">שבצק</h1>
-        <p className="text-gray-400 text-sm mt-0.5">מערכת שיבוץ כוחות ומשימות</p>
-      </div>
-
-      <div className="p-5 space-y-4">
-        {/* Google login */}
-        <GoogleButton />
-
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400">או בחר ידנית</span>
-          <div className="flex-1 h-px bg-gray-200" />
-        </div>
-
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי או תעודת זהות</label>
         <input
           type="text"
-          placeholder="חיפוש..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+          dir="ltr"
+          value={identifier}
+          onChange={e => setIdentifier(e.target.value)}
+          placeholder="1234567"
           className={inputCls}
+          autoComplete="username"
         />
-
-        <div className="space-y-4 max-h-80 overflow-y-auto">
-          {(["company_commander", "section_commander", "soldier"] as const).map(level => {
-            const group = byLevel[level];
-            if (group.length === 0) return null;
-            return (
-              <div key={level}>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5 px-1">
-                  {PERMISSION_LEVEL_LABELS[level]}
-                </p>
-                <div className="space-y-1">
-                  {group.map(s => (
-                    <button
-                      key={s.id}
-                      onClick={() => onLogin(s.id)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-blue-50 transition-colors text-right group cursor-pointer"
-                    >
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                        level === "company_commander" ? "bg-purple-100 text-purple-700" :
-                        level === "section_commander" ? "bg-blue-100 text-blue-700" :
-                        "bg-gray-100 text-gray-600"
-                      }`}>
-                        {s.firstName[0]}{s.lastName[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm">{s.firstName} {s.lastName}</p>
-                        <p className="text-xs text-gray-400 truncate">{s.rank} · {s.role}</p>
-                      </div>
-                      <span className="text-gray-300 group-hover:text-blue-400 transition-colors">←</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {filtered.length === 0 && (
-            <p className="text-center text-gray-400 text-sm py-4">לא נמצאו תוצאות</p>
-          )}
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא</label>
+        <div className="relative">
+          <input
+            type={showPw ? "text" : "password"}
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            className={inputCls}
+            autoComplete="current-password"
+          />
+          <button type="button" onClick={() => setShowPw(v => !v)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer">
+            {showPw ? "הסתר" : "הצג"}
+          </button>
         </div>
       </div>
-    </div>
+      {localError && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2 text-center">{localError}</p>}
+      <button
+        type="submit"
+        disabled={submitting || !identifier.trim() || !password}
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer"
+      >
+        {submitting ? "מתחבר..." : "כניסה"}
+      </button>
+      <button
+        type="button"
+        onClick={onForgot}
+        className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+      >
+        שכחתי סיסמא
+      </button>
+    </form>
   );
 }
 
-// ── Claim form — קישור חשבון Google לחייל קיים ────────────────────────────────
+// ── Register form ─────────────────────────────────────────────────────────────
+
+function RegisterForm({ onSuccess, onBack }: {
+  onSuccess: (token: string, soldier: Soldier) => void;
+  onBack: () => void;
+}) {
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 6) { setLocalError("סיסמא חייבת להכיל לפחות 6 תווים"); return; }
+    if (password !== confirm) { setLocalError("הסיסמאות אינן תואמות"); return; }
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      const { access_token, soldier } = await apiRegister(identifier.trim(), password);
+      onSuccess(access_token, { ...soldier, hasPassword: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "שגיאה";
+      if (msg.includes("כבר קיים")) {
+        setLocalError("חשבון כבר קיים — עבור לכניסה או השתמש ב\"שכחתי סיסמא\"");
+      } else if (msg.includes("לא נמצא")) {
+        setLocalError("לא נמצא חייל עם המספר שהוזן. בדוק שוב או פנה למפקד.");
+      } else {
+        setLocalError(msg);
+      }
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי או תעודת זהות</label>
+        <input type="text" dir="ltr" value={identifier}
+          onChange={e => setIdentifier(e.target.value)}
+          placeholder="1234567" className={inputCls} autoComplete="username" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא חדשה</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="לפחות 6 תווים" className={inputCls} autoComplete="new-password" />
+          <button type="button" onClick={() => setShowPw(v => !v)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer">
+            {showPw ? "הסתר" : "הצג"}
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">אימות סיסמא</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            className={inputCls} autoComplete="new-password" />
+        </div>
+      </div>
+      {localError && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2 text-center">{localError}</p>}
+      <button type="submit" disabled={submitting || !identifier.trim() || !password || !confirm}
+        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
+        {submitting ? "יוצר חשבון..." : "צור חשבון"}
+      </button>
+      <button type="button" onClick={onBack}
+        className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+        ← חזרה לכניסה
+      </button>
+    </form>
+  );
+}
+
+// ── Claim form ────────────────────────────────────────────────────────────────
 
 function ClaimForm({ userId, onSuccess, onError }: {
   userId: string;
-  onSuccess: () => void;
+  onSuccess: (token: string, soldier: Soldier) => void;
   onError: (msg: string) => void;
 }) {
-  const router = useRouter();
   const [personalNumber, setPersonalNumber] = useState("");
   const [idNumber, setIdNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  async function handleClaim(e: React.SyntheticEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!personalNumber.trim() && !idNumber.trim()) {
       setLocalError("יש למלא לפחות מספר אישי או תעודת זהות.");
@@ -139,9 +207,7 @@ function ClaimForm({ userId, onSuccess, onError }: {
         personalNumber.trim() || undefined,
         idNumber.trim() || undefined,
       );
-      saveSession(access_token, soldier);
-      onSuccess();
-      router.push("/");
+      onSuccess(access_token, soldier);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "שגיאה";
       if (msg.includes("כבר מקושר")) {
@@ -156,169 +222,379 @@ function ClaimForm({ userId, onSuccess, onError }: {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-      <div className="bg-gray-900 text-white px-6 py-5 text-center">
-        <div className="text-4xl mb-2">🪖</div>
-        <h1 className="text-xl font-bold">שבצק</h1>
-        <p className="text-gray-400 text-sm mt-0.5">קישור חשבון לחייל</p>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-gray-600 text-center">
+        הזן את הפרטים שלך לקישור החשבון:
+      </p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי</label>
+        <input type="text" dir="ltr" value={personalNumber}
+          onChange={e => setPersonalNumber(e.target.value)}
+          placeholder="לדוגמה: 1234567" className={inputCls} />
       </div>
-      <form onSubmit={handleClaim} className="p-5 space-y-4">
-        <p className="text-sm text-gray-600 text-center">
-          כדי להשלים את הכניסה, הזן את הפרטים שלך כדי שנוכל לאמת את זהותך:
-        </p>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי</label>
-          <input
-            type="text"
-            dir="ltr"
-            value={personalNumber}
-            onChange={e => setPersonalNumber(e.target.value)}
-            placeholder="לדוגמה: 1234567"
-            className={inputCls}
-          />
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400">או</span>
-          <div className="flex-1 h-px bg-gray-200" />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">תעודת זהות</label>
-          <input
-            type="text"
-            dir="ltr"
-            value={idNumber}
-            onChange={e => setIdNumber(e.target.value)}
-            placeholder="לדוגמה: 123456789"
-            className={inputCls}
-          />
-        </div>
-
-        {localError && (
-          <p className="text-red-600 text-sm text-center bg-red-50 rounded-lg px-3 py-2">{localError}</p>
-        )}
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer"
-        >
-          {submitting ? "מאמת..." : "כניסה"}
-        </button>
-      </form>
-    </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-200" />
+        <span className="text-xs text-gray-400">או</span>
+        <div className="flex-1 h-px bg-gray-200" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">תעודת זהות</label>
+        <input type="text" dir="ltr" value={idNumber}
+          onChange={e => setIdNumber(e.target.value)}
+          placeholder="לדוגמה: 123456789" className={inputCls} />
+      </div>
+      {localError && <p className="text-red-600 text-sm text-center bg-red-50 rounded-lg px-3 py-2">{localError}</p>}
+      <button type="submit" disabled={submitting}
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
+        {submitting ? "מאמת..." : "המשך"}
+      </button>
+    </form>
   );
 }
 
-// ── Main page (wrapped in Suspense for useSearchParams) ───────────────────────
+// ── Set password form ─────────────────────────────────────────────────────────
 
-type PageState =
-  | { mode: "loading" }
-  | { mode: "selector"; soldiers: PublicSoldier[] }
-  | { mode: "claim"; userId: string }
-  | { mode: "error"; message: string };
+function SetPasswordForm({ token, soldier, onSuccess }: {
+  token: string;
+  soldier: Soldier;
+  onSuccess: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 6) { setLocalError("סיסמא חייבת להכיל לפחות 6 תווים"); return; }
+    if (password !== confirm) { setLocalError("הסיסמאות אינן תואמות"); return; }
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      // set token in localStorage so the API call is authenticated
+      localStorage.setItem("shavtsak_token", token);
+      await apiSetPassword(password);
+      // only save full session after password is confirmed saved in DB
+      saveSession(token, soldier);
+      onSuccess();
+    } catch (e: unknown) {
+      localStorage.removeItem("shavtsak_token");
+      setLocalError(e instanceof Error ? e.message : "שגיאה בשמירת הסיסמא. בדוק שהשרת פועל ונסה שוב.");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-gray-600 text-center">
+        בחר סיסמא לכניסות הבאות:
+      </p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא חדשה</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="לפחות 6 תווים" className={inputCls} autoComplete="new-password" />
+          <button type="button" onClick={() => setShowPw(v => !v)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer">
+            {showPw ? "הסתר" : "הצג"}
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">אימות סיסמא</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            className={inputCls} autoComplete="new-password" />
+        </div>
+      </div>
+      {localError && <p className="text-red-600 text-sm text-center bg-red-50 rounded-lg px-3 py-2">{localError}</p>}
+      <button type="submit" disabled={submitting || !password || !confirm}
+        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
+        {submitting ? "שומר..." : "שמור סיסמא וכנס"}
+      </button>
+    </form>
+  );
+}
+
+// ── Forgot password form ──────────────────────────────────────────────────────
+
+function ForgotPasswordForm({ onBack, onSuccess, onError }: {
+  onBack: () => void;
+  onSuccess: (token: string, soldier: Soldier) => void;
+  onError: (msg: string) => void;
+}) {
+  const [step, setStep] = useState<"enter" | "code">("enter");
+  const [identifier, setIdentifier] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  async function handleUseCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword.length < 6) { setLocalError("סיסמא חייבת להכיל לפחות 6 תווים"); return; }
+    if (newPassword !== confirm) { setLocalError("הסיסמאות אינן תואמות"); return; }
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      const { access_token, soldier } = await useResetCode(identifier.trim(), code.trim(), newPassword);
+      onSuccess(access_token, soldier);
+    } catch (e: unknown) {
+      setLocalError(e instanceof Error ? e.message : "שגיאה");
+      setSubmitting(false);
+    }
+  }
+
+  if (step === "enter") {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600 text-center">
+          פנה למפקד הישיר שלך ובקש קוד איפוס סיסמא.
+          לאחר קבלת הקוד, הזן אותו כאן:
+        </p>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי או תעודת זהות</label>
+          <input type="text" dir="ltr" value={identifier}
+            onChange={e => setIdentifier(e.target.value)}
+            placeholder="1234567" className={inputCls} />
+        </div>
+        <button
+          onClick={() => { if (identifier.trim()) setStep("code"); }}
+          disabled={!identifier.trim()}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer"
+        >
+          יש לי קוד
+        </button>
+        <button onClick={onBack}
+          className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+          ← חזרה
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleUseCode} className="space-y-4">
+      <p className="text-sm text-gray-600 text-center">הזן את הקוד שקיבלת מהמפקד:</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">קוד 6 ספרות</label>
+        <input type="text" dir="ltr" value={code}
+          onChange={e => setCode(e.target.value)}
+          placeholder="123456" maxLength={6} className={inputCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא חדשה</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            placeholder="לפחות 6 תווים" className={inputCls} autoComplete="new-password" />
+          <button type="button" onClick={() => setShowPw(v => !v)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer">
+            {showPw ? "הסתר" : "הצג"}
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">אימות סיסמא</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            className={inputCls} autoComplete="new-password" />
+        </div>
+      </div>
+      {localError && <p className="text-red-600 text-sm text-center bg-red-50 rounded-lg px-3 py-2">{localError}</p>}
+      <button type="submit" disabled={submitting || !code || !newPassword || !confirm}
+        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
+        {submitting ? "מאמת..." : "שמור סיסמא חדשה"}
+      </button>
+      <button type="button" onClick={() => setStep("enter")}
+        className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+        ← חזרה
+      </button>
+    </form>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+type PageMode =
+  | "loading"
+  | "login"
+  | "register"
+  | "claim"
+  | "set-password"
+  | "forgot"
+  | "error";
+
+interface PageState {
+  mode: PageMode;
+  pendingToken?: string;
+  pendingSoldier?: Soldier;
+  claimUserId?: string;
+  errorMessage?: string;
+}
 
 function LoginPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [state, setState] = useState<PageState>({ mode: "loading" });
 
-  // טיפול ב-redirect מ-Google OAuth
   useEffect(() => {
-    const token = params.get("token");
-    const err   = params.get("error");
-    const email = params.get("email");
-    const step  = params.get("step");
+    const token  = params.get("token");
+    const err    = params.get("error");
+    const step   = params.get("step");
     const userId = params.get("userId");
 
     if (token) {
       localStorage.setItem("shavtsak_token", token);
       getMe()
         .then(soldier => {
-          saveSession(token, soldier);
-          router.push("/");
+          if (!soldier.hasPassword) {
+            setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier });
+          } else {
+            saveSession(token, soldier);
+            router.push("/");
+          }
         })
         .catch(() => {
           localStorage.removeItem("shavtsak_token");
-          setState({ mode: "error", message: "שגיאה בקבלת פרטי המשתמש. נסה שוב." });
+          setState({ mode: "error", errorMessage: "שגיאה בקבלת פרטי המשתמש. נסה שוב." });
         });
       return;
     }
 
     if (step === "claim" && userId) {
-      setState({ mode: "claim", userId });
+      setState({ mode: "claim", claimUserId: userId });
       return;
     }
 
-    if (err) {
-      if (err === "google_cancelled") {
-        // ביטול — חזור לסלקטור
-      } else {
-        setState({ mode: "error", message: `שגיאה בכניסה עם Google. ${email ? `המייל ${email} אינו מוכר.` : "נסה שוב."}` });
-        return;
-      }
+    if (err && err !== "google_cancelled") {
+      setState({ mode: "error", errorMessage: "שגיאה בכניסה עם Google. נסה שוב." });
+      return;
     }
 
-    // טעינת רשימת חיילים לסלקטור
-    getPublicSoldiers()
-      .then(soldiers => setState({ mode: "selector", soldiers }))
-      .catch(() => setState({ mode: "error", message: "לא ניתן להתחבר לשרת." }));
+    setState({ mode: "login" });
   }, [params, router]);
 
-  async function handleLogin(soldierId: string) {
-    try {
-      const { access_token, soldier } = await login(soldierId);
-      saveSession(access_token, soldier);
+  function handleLoginSuccess(token: string, soldier: Soldier) {
+    if (!soldier.hasPassword) {
+      setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier });
+    } else {
+      saveSession(token, soldier);
       router.push("/");
-    } catch {
-      setState({ mode: "error", message: "שגיאה בכניסה, נסה שוב." });
     }
   }
 
-  const wrapper = (children: React.ReactNode) => (
+  function handleSetPasswordDone() {
+    if (state.pendingSoldier) {
+      // session already saved in SetPasswordForm before calling setPassword
+      router.push("/");
+    }
+  }
+
+  const wrapper = (title: string, children: React.ReactNode) => (
     <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-950 flex items-center justify-center p-4">
-      {children}
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+        <div className="bg-gray-900 text-white px-6 py-5 text-center">
+          <div className="text-4xl mb-2">🪖</div>
+          <h1 className="text-xl font-bold">שבצק</h1>
+          <p className="text-gray-400 text-sm mt-0.5">{title}</p>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
     </div>
   );
 
   if (state.mode === "loading") {
-    return wrapper(<div className="text-white text-lg">טוען...</div>);
-  }
-
-  if (state.mode === "claim") {
-    return wrapper(
-      <ClaimForm
-        userId={state.userId}
-        onSuccess={() => {}}
-        onError={msg => setState({ mode: "error", message: msg })}
-      />
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-800 to-gray-950 flex items-center justify-center">
+        <div className="text-white text-lg">טוען...</div>
+      </div>
     );
   }
 
   if (state.mode === "error") {
-    return wrapper(
-      <div className="bg-white rounded-2xl shadow-xl p-8 max-w-sm w-full text-center">
-        <div className="text-4xl mb-3">⚠️</div>
-        <p className="text-gray-700 font-medium">{state.message}</p>
-        <button
-          onClick={() => {
-            setState({ mode: "loading" });
-            getPublicSoldiers()
-              .then(soldiers => setState({ mode: "selector", soldiers }))
-              .catch(() => setState({ mode: "error", message: "לא ניתן להתחבר לשרת." }));
-          }}
-          className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg text-sm cursor-pointer"
-        >
+    return wrapper("שגיאה",
+      <div className="text-center space-y-4">
+        <div className="text-4xl">⚠️</div>
+        <p className="text-gray-700 font-medium">{state.errorMessage}</p>
+        <button onClick={() => setState({ mode: "login" })}
+          className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm cursor-pointer">
           חזור לכניסה
         </button>
       </div>
     );
   }
 
-  return wrapper(<LoginSelector soldiers={state.soldiers} onLogin={handleLogin} />);
+  if (state.mode === "claim" && state.claimUserId) {
+    return wrapper("קישור חשבון Google לחייל",
+      <ClaimForm
+        userId={state.claimUserId}
+        onSuccess={(token, soldier) => handleLoginSuccess(token, soldier)}
+        onError={msg => setState({ mode: "error", errorMessage: msg })}
+      />
+    );
+  }
+
+  if (state.mode === "set-password" && state.pendingToken && state.pendingSoldier) {
+    return wrapper("בחירת סיסמא",
+      <SetPasswordForm
+        token={state.pendingToken}
+        soldier={state.pendingSoldier}
+        onSuccess={handleSetPasswordDone}
+      />
+    );
+  }
+
+  if (state.mode === "register") {
+    return wrapper("הרשמה",
+      <RegisterForm
+        onSuccess={handleLoginSuccess}
+        onBack={() => setState({ mode: "login" })}
+      />
+    );
+  }
+
+  if (state.mode === "forgot") {
+    return wrapper("איפוס סיסמא",
+      <ForgotPasswordForm
+        onBack={() => setState({ mode: "login" })}
+        onSuccess={(token, soldier) => handleLoginSuccess(token, soldier)}
+        onError={msg => setState({ mode: "error", errorMessage: msg })}
+      />
+    );
+  }
+
+  // Default: login
+  return wrapper("מערכת שיבוץ כוחות ומשימות",
+    <div className="space-y-4">
+      <GoogleButton />
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-200" />
+        <span className="text-xs text-gray-400">או</span>
+        <div className="flex-1 h-px bg-gray-200" />
+      </div>
+      <PasswordLoginForm
+        onSuccess={handleLoginSuccess}
+        onForgot={() => setState({ mode: "forgot" })}
+        onError={msg => setState({ mode: "error", errorMessage: msg })}
+      />
+      <div className="border-t border-gray-100 pt-3 text-center">
+        <span className="text-xs text-gray-400">פעם ראשונה? </span>
+        <button
+          onClick={() => setState({ mode: "register" })}
+          className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+        >
+          צור חשבון
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function LoginPage() {

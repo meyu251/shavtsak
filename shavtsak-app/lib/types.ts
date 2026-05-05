@@ -53,6 +53,9 @@ export interface Soldier {
   email?: string;
   // היררכיה — מפקד פלוגה שמנהל פלוגה ספציפית
   managedCompanyId?: string | null;
+  // dev-only — מגיע מטבלת users, לא מאוחסן לחיילים
+  isDeveloper?: boolean;
+  hasPassword?: boolean;
 }
 
 export interface ExtraContact {

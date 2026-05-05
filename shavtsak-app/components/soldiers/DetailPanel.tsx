@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Soldier, PermissionLevel, ExtraPermission } from "@/lib/types";
 import type { Section } from "@/lib/types";
 import {
@@ -7,6 +8,7 @@ import {
   canManagePermissions, canGrantPermission, canChangePermissionLevel,
   PERMISSION_LEVEL_LABELS, EXTRA_PERMISSION_LABELS, EXTRA_PERMISSION_DESC,
 } from "@/lib/permissions";
+import { createResetCode } from "@/lib/api";
 
 const EXTRA_PERMISSIONS: ExtraPermission[] = ["extended_data", "management", "schedule", "tasks"];
 
@@ -55,11 +57,28 @@ export function DetailPanel({
   onToggleExtraPermission: (s: Soldier, p: ExtraPermission) => void;
   onChangePermissionLevel: (s: Soldier, l: PermissionLevel) => void;
 }) {
+  const [resetCode, setResetCode] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+
   const sectionName = sections.find((sec) => sec.id === soldier.sectionId)?.name ?? "—";
   const canEdit = viewer ? canEditSoldier(viewer, soldier) : false;
   const canDelete = viewer ? canDeleteSoldier(viewer, soldier) : false;
   const canSeePrivate = viewer ? canSeeFullDetails(viewer, soldier) : false;
   const canManage = viewer ? canManagePermissions(viewer) : false;
+  const canReset = viewer
+    ? (viewer.permissionLevel === "company_commander" || viewer.permissionLevel === "section_commander")
+      && viewer.id !== soldier.id
+    : false;
+
+  async function handleCreateResetCode() {
+    setResetting(true);
+    try {
+      const { code } = await createResetCode(soldier.id);
+      setResetCode(code);
+    } finally {
+      setResetting(false);
+    }
+  }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm h-full overflow-y-auto">
@@ -185,6 +204,41 @@ export function DetailPanel({
             })}
           </div>
         </SectionBlock>
+
+        {/* Password reset — commanders only */}
+        {canReset && (
+          <SectionBlock title="ניהול חשבון">
+            {resetCode ? (
+              <div className="text-center space-y-2">
+                <p className="text-sm text-gray-600">הקוד החד-פעמי לאיפוס סיסמא:</p>
+                <p className="text-3xl font-mono font-bold tracking-widest text-blue-700 dir-ltr" dir="ltr">
+                  {resetCode}
+                </p>
+                <p className="text-xs text-gray-400">תוקף: שעה אחת. מסור לחייל בעל פה.</p>
+                <button
+                  onClick={() => setResetCode(null)}
+                  className="text-xs text-gray-400 hover:text-gray-600 underline cursor-pointer"
+                >
+                  סגור
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">איפוס סיסמא</p>
+                  <p className="text-xs text-gray-400">צור קוד חד-פעמי לחייל שנעל את עצמו</p>
+                </div>
+                <button
+                  onClick={handleCreateResetCode}
+                  disabled={resetting}
+                  className="text-sm bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {resetting ? "יוצר..." : "צור קוד"}
+                </button>
+              </div>
+            )}
+          </SectionBlock>
+        )}
       </div>
     </div>
   );

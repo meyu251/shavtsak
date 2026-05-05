@@ -44,8 +44,8 @@ def get_visible_soldier_ids(actor: models.Soldier, db: Session) -> list[str] | N
         ]
         return ids or [actor.id]
 
-    # soldier — רואה רק עצמו
-    return [actor.id]
+    # soldier — רואה את כל החיילים (שמות וטלפונים), פרטים רגישים מסוננים בפרונטאנד
+    return None
 
 
 def get_visible_section_ids(actor: models.Soldier, db: Session) -> list[str] | None:
@@ -67,5 +67,5 @@ def get_visible_section_ids(actor: models.Soldier, db: Session) -> list[str] | N
     if level == "section_commander":
         return [actor.sectionId] if actor.sectionId else []
 
-    # soldier — לא רואה מחלקות
-    return []
+    # soldier — רואה את כל המחלקות (לצורך ספר טלפונים)
+    return None

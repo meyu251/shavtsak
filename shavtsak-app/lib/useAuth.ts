@@ -6,6 +6,8 @@ import { Soldier } from "./types";
 
 const TOKEN_KEY = "shavtsak_token";
 const USER_KEY = "shavtsak_current_user";
+const ORIGINAL_TOKEN_KEY = "shavtsak_original_token";
+const ORIGINAL_USER_KEY = "shavtsak_original_user";
 
 /** שמירת token + soldier אחרי login */
 export function saveSession(token: string, soldier: Soldier) {
@@ -16,6 +18,33 @@ export function saveSession(token: string, soldier: Soldier) {
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(ORIGINAL_TOKEN_KEY);
+  localStorage.removeItem(ORIGINAL_USER_KEY);
+}
+
+export function startImpersonation(token: string, soldier: Soldier) {
+  const currentToken = localStorage.getItem(TOKEN_KEY);
+  const currentUser = localStorage.getItem(USER_KEY);
+  if (currentToken) localStorage.setItem(ORIGINAL_TOKEN_KEY, currentToken);
+  if (currentUser) localStorage.setItem(ORIGINAL_USER_KEY, currentUser);
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(soldier));
+}
+
+export function stopImpersonation() {
+  const originalToken = localStorage.getItem(ORIGINAL_TOKEN_KEY);
+  const originalUser = localStorage.getItem(ORIGINAL_USER_KEY);
+  if (originalToken) localStorage.setItem(TOKEN_KEY, originalToken);
+  if (originalUser) localStorage.setItem(USER_KEY, originalUser);
+  localStorage.removeItem(ORIGINAL_TOKEN_KEY);
+  localStorage.removeItem(ORIGINAL_USER_KEY);
+}
+
+export function getImpersonationOriginal(): Soldier | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(ORIGINAL_USER_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as Soldier; } catch { return null; }
 }
 
 export function getToken(): string | null {

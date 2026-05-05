@@ -159,15 +159,42 @@ class ContactOut(BaseModel):
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
+class MeOut(SoldierOut):
+    isDeveloper: bool = False
+    hasPassword: bool = False
+
+
 class LoginRequest(BaseModel):
     soldierId: str
+
+class PasswordLoginRequest(BaseModel):
+    identifier: str  # personalNumber or idNumber
+    password: str
 
 class ClaimRequest(BaseModel):
     userId: str
     personalNumber: Optional[str] = None
     idNumber: Optional[str] = None
 
+class SetPasswordRequest(BaseModel):
+    password: str
+
+class ResetCodeCreateRequest(BaseModel):
+    soldierId: str  # commander specifies which soldier needs a reset
+
+class ResetCodeUseRequest(BaseModel):
+    identifier: str  # personalNumber or idNumber
+    code: str
+    newPassword: str
+
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     soldier: SoldierOut
+
+class ResetCodeOut(BaseModel):
+    code: str  # plain 6-digit code shown once to the commander
+
+class RegisterRequest(BaseModel):
+    identifier: str  # personalNumber or idNumber
+    password: str

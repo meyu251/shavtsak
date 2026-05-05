@@ -5,7 +5,7 @@ models.py — הגדרת הטבלאות בבסיס הנתונים.
 """
 
 import uuid
-from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, Text, Date, Index
+from sqlalchemy import Column, String, Boolean, Integer, ForeignKey, Text, Date, DateTime, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -83,8 +83,23 @@ class User(Base):
     email = Column(String, nullable=True, unique=True)
     google_sub = Column(String, nullable=True, unique=True)  # Google user ID ("id" מ-userinfo)
     soldier_id = Column(String, ForeignKey("soldiers.id"), nullable=True, unique=True)
+    is_developer = Column(Boolean, default=False, nullable=False)
+    password_hash = Column(String, nullable=True)  # bcrypt hash; None = not set yet
 
     soldier = relationship("Soldier")
+
+
+class ResetCode(Base):
+    """One-time password reset code issued by a commander."""
+    __tablename__ = "reset_codes"
+
+    id = Column(String, primary_key=True, default=new_id)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    code_hash = Column(String, nullable=False)  # bcrypt hash of the 6-digit code
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+
+    user = relationship("User")
 
 
 class SoldierExtraPermission(Base):

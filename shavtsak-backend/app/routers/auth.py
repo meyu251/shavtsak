@@ -1,13 +1,19 @@
 import os
 import httpx
+import random
+import string
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
+from passlib.context import CryptContext
 from app.database import get_db
 from app import models, schemas
 from app.auth import create_token, get_current_soldier
 import uuid
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -42,6 +48,158 @@ def soldier_to_out(s: models.Soldier) -> schemas.SoldierOut:
     )
 
 
+# ── Password login ───────────────────────────────────────────────────────────
+
+def _find_soldier_by_identifier(identifier: str, db: Session):
+    """Find soldier by personalNumber or idNumber."""
+    soldier = db.query(models.Soldier).filter(
+        models.Soldier.personalNumber == identifier.strip()
+    ).first()
+    if not soldier:
+        soldier = db.query(models.Soldier).filter(
+            models.Soldier.idNumber == identifier.strip()
+        ).first()
+    return soldier
+
+
+@router.post("/register", response_model=schemas.TokenOut)
+def register(body: schemas.RegisterRequest, db: Session = Depends(get_db)):
+    """First-time registration: find soldier by identifier, create User + set password."""
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="הסיסמא חייבת להכיל לפחות 6 תווים")
+
+    soldier = _find_soldier_by_identifier(body.identifier, db)
+    if not soldier:
+        raise HTTPException(status_code=404, detail="לא נמצא חייל עם המספר שהוזן")
+
+    user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
+    if user and user.password_hash:
+        raise HTTPException(status_code=409, detail="חשבון כבר קיים — התחבר עם סיסמא או Google")
+
+    if not user:
+        user = models.User(
+            id=str(uuid.uuid4()),
+            soldier_id=soldier.id,
+        )
+        db.add(user)
+
+    user.password_hash = pwd_context.hash(body.password)
+    db.commit()
+
+    token = create_token(soldier.id)
+    return schemas.TokenOut(access_token=token, soldier=soldier_to_out(soldier))
+
+
+@router.post("/password/login", response_model=schemas.TokenOut)
+def password_login(body: schemas.PasswordLoginRequest, db: Session = Depends(get_db)):
+    """Login with personalNumber/idNumber + password."""
+    soldier = _find_soldier_by_identifier(body.identifier, db)
+    if not soldier:
+        raise HTTPException(status_code=401, detail="פרטים שגויים")
+
+    user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
+    if not user or not user.password_hash:
+        raise HTTPException(status_code=401, detail="פרטים שגויים")
+
+    if not pwd_context.verify(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="פרטים שגויים")
+
+    token = create_token(soldier.id)
+    return schemas.TokenOut(access_token=token, soldier=soldier_to_out(soldier))
+
+
+@router.post("/password/set")
+def set_password(
+    body: schemas.SetPasswordRequest,
+    current_soldier: models.Soldier = Depends(get_current_soldier),
+    db: Session = Depends(get_db),
+):
+    """Set or change password for the current user."""
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="הסיסמא חייבת להכיל לפחות 6 תווים")
+
+    user = db.query(models.User).filter(models.User.soldier_id == current_soldier.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="משתמש לא נמצא")
+
+    user.password_hash = pwd_context.hash(body.password)
+    db.commit()
+    return {"ok": True}
+
+
+# ── Password reset (commander issues code, soldier uses it) ──────────────────
+
+@router.post("/reset-code/create", response_model=schemas.ResetCodeOut)
+def create_reset_code(
+    body: schemas.ResetCodeCreateRequest,
+    current_soldier: models.Soldier = Depends(get_current_soldier),
+    db: Session = Depends(get_db),
+):
+    """
+    Commander generates a one-time reset code for a soldier.
+    Only section_commander or company_commander can do this.
+    """
+    if current_soldier.permissionLevel not in ("section_commander", "company_commander"):
+        raise HTTPException(status_code=403, detail="אין הרשאה")
+
+    target = db.query(models.Soldier).filter(models.Soldier.id == body.soldierId).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="חייל לא נמצא")
+
+    user = db.query(models.User).filter(models.User.soldier_id == target.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="לחייל זה אין חשבון רשום עדיין")
+
+    # Invalidate previous unused codes for this user
+    db.query(models.ResetCode).filter(
+        models.ResetCode.user_id == user.id,
+        models.ResetCode.used == False,
+    ).update({"used": True})
+
+    plain_code = "".join(random.choices(string.digits, k=6))
+    reset = models.ResetCode(
+        user_id=user.id,
+        code_hash=pwd_context.hash(plain_code),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        used=False,
+    )
+    db.add(reset)
+    db.commit()
+    return schemas.ResetCodeOut(code=plain_code)
+
+
+@router.post("/reset-code/use", response_model=schemas.TokenOut)
+def use_reset_code(body: schemas.ResetCodeUseRequest, db: Session = Depends(get_db)):
+    """Soldier uses the 6-digit code to set a new password."""
+    if len(body.newPassword) < 6:
+        raise HTTPException(status_code=400, detail="הסיסמא חייבת להכיל לפחות 6 תווים")
+
+    soldier = _find_soldier_by_identifier(body.identifier, db)
+    if not soldier:
+        raise HTTPException(status_code=401, detail="פרטים שגויים")
+
+    user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="פרטים שגויים")
+
+    now = datetime.now(timezone.utc)
+    reset = db.query(models.ResetCode).filter(
+        models.ResetCode.user_id == user.id,
+        models.ResetCode.used == False,
+        models.ResetCode.expires_at > now,
+    ).order_by(models.ResetCode.expires_at.desc()).first()
+
+    if not reset or not pwd_context.verify(body.code, reset.code_hash):
+        raise HTTPException(status_code=401, detail="קוד שגוי או פג תוקף")
+
+    reset.used = True
+    user.password_hash = pwd_context.hash(body.newPassword)
+    db.commit()
+
+    token = create_token(soldier.id)
+    return schemas.TokenOut(access_token=token, soldier=soldier_to_out(soldier))
+
+
 # ── כניסה רגילה (בחירת חייל מרשימה — לפיתוח בלבד) ────────────────────────────
 
 @router.post("/login", response_model=schemas.TokenOut)
@@ -56,10 +214,40 @@ def login(body: schemas.LoginRequest, db: Session = Depends(get_db)):
 
 # ── מי אני? (לאחר כניסה) ─────────────────────────────────────────────────────
 
-@router.get("/me", response_model=schemas.SoldierOut)
-def get_me(current_soldier: models.Soldier = Depends(get_current_soldier)):
-    """מחזיר את פרטי החייל המחובר לפי ה-JWT."""
-    return soldier_to_out(current_soldier)
+@router.get("/me", response_model=schemas.MeOut)
+def get_me(
+    current_soldier: models.Soldier = Depends(get_current_soldier),
+    db: Session = Depends(get_db),
+):
+    """מחזיר את פרטי החייל המחובר לפי ה-JWT, כולל דגל isDeveloper."""
+    user = db.query(models.User).filter(models.User.soldier_id == current_soldier.id).first()
+    base = soldier_to_out(current_soldier)
+    return schemas.MeOut(
+        **base.model_dump(),
+        isDeveloper=bool(user and user.is_developer),
+        hasPassword=bool(user and user.password_hash),
+    )
+
+
+# ── התחזות למשתמש אחר (מפתח בלבד) ───────────────────────────────────────────
+
+@router.post("/impersonate/{target_soldier_id}", response_model=schemas.TokenOut)
+def impersonate(
+    target_soldier_id: str,
+    current_soldier: models.Soldier = Depends(get_current_soldier),
+    db: Session = Depends(get_db),
+):
+    """מחזיר JWT של חייל אחר — זמין רק למשתמש עם is_developer=True."""
+    user = db.query(models.User).filter(models.User.soldier_id == current_soldier.id).first()
+    if not user or not user.is_developer:
+        raise HTTPException(status_code=403, detail="אין הרשאה להתחזות למשתמש אחר")
+
+    target = db.query(models.Soldier).filter(models.Soldier.id == target_soldier_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="חייל לא נמצא")
+
+    token = create_token(target.id)
+    return schemas.TokenOut(access_token=token, soldier=soldier_to_out(target))
 
 
 # ── Claiming — קישור User לחייל קיים ─────────────────────────────────────────
