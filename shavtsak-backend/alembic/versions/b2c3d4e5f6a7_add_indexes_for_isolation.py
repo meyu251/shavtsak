@@ -18,10 +18,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_index('ix_section_company', 'sections', ['company_id'])
-    op.create_index('ix_soldier_managed_company', 'soldiers', ['managed_company_id'])
-    op.create_index('ix_user_soldier', 'users', ['soldier_id'])
-    op.create_index('ix_user_google_sub', 'users', ['google_sub'])
+    conn = op.get_bind()
+    existing = {row[0] for row in conn.execute(sa.text(
+        "SELECT indexname FROM pg_indexes WHERE schemaname='public'"
+        " UNION SELECT name FROM sqlite_master WHERE type='index'"
+        " UNION SELECT '' WHERE 1=0"
+    )).fetchall()} if False else _get_indexes(conn)
+    if 'ix_section_company' not in existing:
+        op.create_index('ix_section_company', 'sections', ['company_id'])
+    if 'ix_soldier_managed_company' not in existing:
+        op.create_index('ix_soldier_managed_company', 'soldiers', ['managed_company_id'])
+    if 'ix_user_soldier' not in existing:
+        op.create_index('ix_user_soldier', 'users', ['soldier_id'])
+    if 'ix_user_google_sub' not in existing:
+        op.create_index('ix_user_google_sub', 'users', ['google_sub'])
+
+
+def _get_indexes(conn) -> set:
+    from sqlalchemy import inspect
+    insp = inspect(conn)
+    result = set()
+    for table in insp.get_table_names():
+        for idx in insp.get_indexes(table):
+            result.add(idx['name'])
+    return result
 
 
 def downgrade() -> None:

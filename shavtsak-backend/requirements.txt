@@ -8,3 +8,4 @@ pydantic
 passlib[bcrypt]
 bcrypt==3.2.2
 httpx
+psycopg2-binary

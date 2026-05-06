@@ -19,7 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column('is_developer', sa.Boolean(), nullable=False, server_default='0'))
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    cols = [c['name'] for c in inspect(conn).get_columns('users')]
+    if 'is_developer' not in cols:
+        op.add_column('users', sa.Column('is_developer', sa.Boolean(), nullable=False, server_default='0'))
 
 
 def downgrade() -> None:

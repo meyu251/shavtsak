@@ -19,15 +19,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table('reset_codes',
-        sa.Column('id', sa.String(), nullable=False),
-        sa.Column('user_id', sa.String(), nullable=False),
-        sa.Column('code_hash', sa.String(), nullable=False),
-        sa.Column('expires_at', sa.DateTime(), nullable=False),
-        sa.Column('used', sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-    )
-    op.add_column('users', sa.Column('password_hash', sa.String(), nullable=True))
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    insp = inspect(conn)
+    if 'reset_codes' not in insp.get_table_names():
+        op.create_table('reset_codes',
+            sa.Column('id', sa.String(), nullable=False),
+            sa.Column('user_id', sa.String(), nullable=False),
+            sa.Column('code_hash', sa.String(), nullable=False),
+            sa.Column('expires_at', sa.DateTime(), nullable=False),
+            sa.Column('used', sa.Boolean(), nullable=False),
+            sa.PrimaryKeyConstraint('id'),
+        )
+    cols = [c['name'] for c in insp.get_columns('users')]
+    if 'password_hash' not in cols:
+        op.add_column('users', sa.Column('password_hash', sa.String(), nullable=True))
 
 
 def downgrade() -> None:
