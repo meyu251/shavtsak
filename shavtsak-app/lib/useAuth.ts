@@ -76,7 +76,7 @@ export function useAuth() {
 
   function logout() {
     clearSession();
-    router.push("/login");
+    window.location.href = "/login";
   }
 
   return { currentUser, logout };
