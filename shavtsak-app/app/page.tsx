@@ -87,7 +87,7 @@ export default function HomePage() {
       <div className="max-w-2xl mx-auto w-full px-4 pb-8 mt-auto">
         <button
           onClick={logout}
-          className="w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors"
+          className="w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors cursor-pointer"
         >
           יציאה מהמערכת
         </button>

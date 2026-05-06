@@ -458,7 +458,7 @@ function LoginPageInner() {
             setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier });
           } else {
             saveSession(token, soldier);
-            router.push("/");
+            router.replace("/");
           }
         })
         .catch(() => {
@@ -486,14 +486,14 @@ function LoginPageInner() {
       setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier });
     } else {
       saveSession(token, soldier);
-      router.push("/");
+      router.replace("/");
     }
   }
 
   function handleSetPasswordDone() {
     if (state.pendingSoldier) {
       // session already saved in SetPasswordForm before calling setPassword
-      router.push("/");
+      router.replace("/");
     }
   }
 
