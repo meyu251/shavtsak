@@ -1,4 +1,4 @@
-"""
+﻿"""
 database.py — חיבור לבסיס הנתונים SQLite
 כל פעם שמישהו שולח בקשה לשרת, נפתחת "session" (חיבור זמני לDB),
 ובסוף הבקשה היא נסגרת אוטומטית.
@@ -17,6 +17,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./shavtsak.db")
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
