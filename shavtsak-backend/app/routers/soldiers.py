@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -100,6 +100,9 @@ def delete_soldier(soldier_id: str, db: Session = Depends(get_db), actor: models
     soldier = db.query(models.Soldier).filter(models.Soldier.id == soldier_id).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")
+    user = db.query(models.User).filter(models.User.soldier_id == soldier_id).first()
+    if user:
+        user.soldier_id = None
     db.delete(soldier)
     db.commit()
     return {"ok": True}
