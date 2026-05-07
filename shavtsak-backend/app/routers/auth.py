@@ -390,3 +390,88 @@ async def google_callback(
 
     # אחרת — הפנייה לדף claiming
     return RedirectResponse(f"{FRONTEND_URL}/login?step=claim&userId={user.id}")
+
+
+# ── Bootstrap — יצירת מסגרת חדשה + מפקד ראשון ───────────────────────────────
+
+@router.post("/bootstrap", response_model=schemas.TokenOut)
+def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
+    """
+    יצירת מסגרת חדשה (מחלקה/פלוגה) + חייל-מפקד + משתמש בטרנזקציה אחת.
+    לשימוש מפקד שמקים מסגרת חדשה לגמרי ללא נתונים קיימים.
+    """
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="הסיסמא חייבת להכיל לפחות 6 תווים")
+    if not body.firstName.strip() or not body.lastName.strip():
+        raise HTTPException(status_code=400, detail="שם פרטי ושם משפחה הם שדות חובה")
+    if not body.unitName.strip():
+        raise HTTPException(status_code=400, detail="שם המסגרת הוא שדה חובה")
+    if body.unitType not in ("section", "company"):
+        raise HTTPException(status_code=400, detail="סוג מסגרת לא תקין")
+    if not body.personalNumber and not body.idNumber:
+        raise HTTPException(status_code=400, detail="יש לספק מספר אישי או תעודת זהות")
+
+    # בדיקת ייחודיות — מניעת כפילויות
+    if body.personalNumber:
+        existing = db.query(models.Soldier).filter(
+            models.Soldier.personalNumber == body.personalNumber.strip()
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="מספר זה כבר רשום במערכת")
+    if body.idNumber:
+        existing = db.query(models.Soldier).filter(
+            models.Soldier.idNumber == body.idNumber.strip()
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="מספר זה כבר רשום במערכת")
+
+    section_id = None
+    company_id = None
+
+    if body.unitType == "section":
+        section = models.Section(
+            id=str(uuid.uuid4()),
+            name=body.unitName.strip(),
+            company_id=None,
+        )
+        db.add(section)
+        db.flush()
+        section_id = section.id
+        permission_level = "section_commander"
+    else:
+        company = models.Company(
+            id=str(uuid.uuid4()),
+            name=body.unitName.strip(),
+        )
+        db.add(company)
+        db.flush()
+        company_id = company.id
+        permission_level = "company_commander"
+
+    soldier = models.Soldier(
+        id=str(uuid.uuid4()),
+        firstName=body.firstName.strip(),
+        lastName=body.lastName.strip(),
+        rank=body.rank,
+        phone=body.phone.strip(),
+        role="מפקד",
+        isActive=True,
+        sectionId=section_id,
+        managed_company_id=company_id,
+        personalNumber=body.personalNumber.strip() if body.personalNumber else None,
+        idNumber=body.idNumber.strip() if body.idNumber else None,
+        permissionLevel=permission_level,
+    )
+    db.add(soldier)
+    db.flush()
+
+    user = models.User(
+        id=str(uuid.uuid4()),
+        soldier_id=soldier.id,
+        password_hash=pwd_context.hash(body.password),
+    )
+    db.add(user)
+    db.commit()
+
+    token = create_token(soldier.id)
+    return schemas.TokenOut(access_token=token, soldier=soldier_to_out(soldier))

@@ -198,3 +198,15 @@ class ResetCodeOut(BaseModel):
 class RegisterRequest(BaseModel):
     identifier: str  # personalNumber or idNumber
     password: str
+
+
+class BootstrapIn(BaseModel):
+    firstName: str
+    lastName: str
+    rank: str
+    personalNumber: Optional[str] = None
+    idNumber: Optional[str] = None
+    phone: str = ""
+    password: str
+    unitName: str
+    unitType: str  # "section" | "company"

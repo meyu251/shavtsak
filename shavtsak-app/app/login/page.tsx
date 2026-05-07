@@ -1,4 +1,5 @@
-"use client";
+﻿"use client";
+import React from "react";
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -6,6 +7,7 @@ import { Suspense } from "react";
 import {
   getMe, getGoogleLoginUrl, claimSoldier,
   passwordLogin, register as apiRegister, setPassword as apiSetPassword, useResetCode,
+  bootstrapUnit,
 } from "@/lib/api";
 import { saveSession } from "@/lib/useAuth";
 import { Soldier } from "@/lib/types";
@@ -420,12 +422,193 @@ function ForgotPasswordForm({ onBack, onSuccess, onError }: {
   );
 }
 
+// ── Register choice screen ────────────────────────────────────────────────────
+
+function RegisterChoiceScreen({ onExisting, onNew, onBack }: {
+  onExisting: () => void;
+  onNew: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 text-center">בחר כיצד ברצונך להצטרף:</p>
+      <button
+        onClick={onExisting}
+        className="w-full border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl p-4 text-right transition-colors cursor-pointer"
+      >
+        <div className="font-semibold text-gray-800 mb-1">הצטרף למסגרת קיימת</div>
+        <div className="text-xs text-gray-500">אני כבר רשום במערכת — אצור סיסמא לחשבון שלי</div>
+      </button>
+      <button
+        onClick={onNew}
+        className="w-full border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-xl p-4 text-right transition-colors cursor-pointer"
+      >
+        <div className="font-semibold text-gray-800 mb-1">צור מסגרת חדשה</div>
+        <div className="text-xs text-gray-500">אני מפקד שמקים יחידה חדשה — אפתח חשבון ומסגרת</div>
+      </button>
+      <button onClick={onBack}
+        className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+        ← חזרה לכניסה
+      </button>
+    </div>
+  );
+}
+
+// ── Create unit form ──────────────────────────────────────────────────────────
+
+const COMMANDER_RANKS = [
+  'טוראי', 'רב טוראי (רב"ט)', 'סמל', 'סמל ראשון (סמ"ר)',
+  'רב סמל (רס"ל)', 'רב סמל ראשון (רס"ר)', 'רב סמל מתקדם (רס"מ)',
+  'רב סמל בכיר (רס"ב)', 'רב נגד (רנ"ג)', 'סגן משנה (סג"מ)',
+  'סגן', 'סרן', 'רב סרן (רס"ן)', 'סגן אלוף (סא"ל)',
+];
+
+function CreateUnitForm({ onSuccess, onBack }: {
+  onSuccess: (token: string, soldier: Soldier) => void;
+  onBack: () => void;
+}) {
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [rank, setRank] = React.useState(COMMANDER_RANKS[9]);
+  const [personalNumber, setPersonalNumber] = React.useState("");
+  const [idNumber, setIdNumber] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [unitName, setUnitName] = React.useState("");
+  const [unitType, setUnitType] = React.useState<"section" | "company">("section");
+  const [password, setPassword] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const [showPw, setShowPw] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [localError, setLocalError] = React.useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) { setLocalError("שם פרטי ושם משפחה הם שדות חובה"); return; }
+    if (!personalNumber.trim() && !idNumber.trim()) { setLocalError("יש למלא לפחות מספר אישי או תעודת זהות"); return; }
+    if (!unitName.trim()) { setLocalError("שם המסגרת הוא שדה חובה"); return; }
+    if (password.length < 6) { setLocalError("סיסמא חייבת להכיל לפחות 6 תווים"); return; }
+    if (password !== confirm) { setLocalError("הסיסמאות אינן תואמות"); return; }
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      const { access_token, soldier } = await bootstrapUnit({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        rank,
+        personalNumber: personalNumber.trim() || undefined,
+        idNumber: idNumber.trim() || undefined,
+        phone: phone.trim(),
+        password,
+        unitName: unitName.trim(),
+        unitType,
+      });
+      onSuccess(access_token, { ...soldier, hasPassword: true });
+    } catch (e: unknown) {
+      setLocalError(e instanceof Error ? e.message : "שגיאה");
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-gray-500 mb-1">שם פרטי</label>
+          <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)}
+            className={inputCls} />
+        </div>
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-gray-500 mb-1">שם משפחה</label>
+          <input type="text" value={lastName} onChange={e => setLastName(e.target.value)}
+            className={inputCls} />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">דרגה</label>
+        <select value={rank} onChange={e => setRank(e.target.value)} className={inputCls}>
+          {COMMANDER_RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">מספר אישי</label>
+        <input type="text" dir="ltr" value={personalNumber}
+          onChange={e => setPersonalNumber(e.target.value)}
+          placeholder="לדוגמה: 1234567" className={inputCls} />
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-gray-200" />
+        <span className="text-xs text-gray-400">או</span>
+        <div className="flex-1 h-px bg-gray-200" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">תעודת זהות</label>
+        <input type="text" dir="ltr" value={idNumber}
+          onChange={e => setIdNumber(e.target.value)}
+          placeholder="לדוגמה: 123456789" className={inputCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">טלפון (אופציונלי)</label>
+        <input type="tel" dir="ltr" value={phone} onChange={e => setPhone(e.target.value)}
+          placeholder="05X-XXXXXXX" className={inputCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">שם המסגרת</label>
+        <input type="text" value={unitName} onChange={e => setUnitName(e.target.value)}
+          placeholder='לדוגמה: מחלקה א׳' className={inputCls} />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">סוג מסגרת</label>
+        <div className="flex gap-2">
+          {(["section", "company"] as const).map(t => (
+            <button key={t} type="button" onClick={() => setUnitType(t)}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer border ${
+                unitType === t
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              }`}>
+              {t === "section" ? "מחלקה" : "פלוגה"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא</label>
+        <div className="relative">
+          <input type={showPw ? "text" : "password"} value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="לפחות 6 תווים" className={inputCls} autoComplete="new-password" />
+          <button type="button" onClick={() => setShowPw(v => !v)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600 cursor-pointer">
+            {showPw ? "הסתר" : "הצג"}
+          </button>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">אימות סיסמא</label>
+        <input type={showPw ? "text" : "password"} value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          className={inputCls} autoComplete="new-password" />
+      </div>
+      {localError && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2 text-center">{localError}</p>}
+      <button type="submit" disabled={submitting}
+        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
+        {submitting ? "יוצר מסגרת..." : "צור מסגרת וכנס"}
+      </button>
+      <button type="button" onClick={onBack}
+        className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
+        ← חזרה
+      </button>
+    </form>
+  );
+}
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type PageMode =
   | "loading"
   | "login"
+  | "register-choice"
   | "register"
+  | "create-unit"
   | "claim"
   | "set-password"
   | "forgot"
@@ -570,6 +753,25 @@ function LoginPageInner() {
     );
   }
 
+  if (state.mode === "register-choice") {
+    return wrapper("הרשמה",
+      <RegisterChoiceScreen
+        onExisting={() => setState({ mode: "register" })}
+        onNew={() => setState({ mode: "create-unit" })}
+        onBack={() => setState({ mode: "login" })}
+      />
+    );
+  }
+
+  if (state.mode === "create-unit") {
+    return wrapper("צור מסגרת חדשה",
+      <CreateUnitForm
+        onSuccess={handleLoginSuccess}
+        onBack={() => setState({ mode: "register-choice" })}
+      />
+    );
+  }
+
   // Default: login
   return wrapper("מערכת שיבוץ כוחות ומשימות",
     <div className="space-y-4">
@@ -587,7 +789,7 @@ function LoginPageInner() {
       <div className="border-t border-gray-100 pt-3 text-center">
         <span className="text-xs text-gray-400">פעם ראשונה? </span>
         <button
-          onClick={() => setState({ mode: "register" })}
+          onClick={() => setState({ mode: "register-choice" })}
           className="text-xs text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
         >
           צור חשבון

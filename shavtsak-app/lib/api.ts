@@ -209,3 +209,19 @@ export async function addContact(data: Omit<ExtraContact, "id">): Promise<ExtraC
 export async function deleteContact(id: string): Promise<void> {
   return req("DELETE", `/contacts/${id}`);
 }
+
+
+/** יצירת מסגרת חדשה + מפקד ראשון — לא מצריך חייל קיים מראש */
+export async function bootstrapUnit(data: {
+  firstName: string;
+  lastName: string;
+  rank: string;
+  personalNumber?: string;
+  idNumber?: string;
+  phone: string;
+  password: string;
+  unitName: string;
+  unitType: "section" | "company";
+}): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", "/auth/bootstrap", data);
+}
