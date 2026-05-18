@@ -192,6 +192,7 @@ export default function SoldiersPage() {
       personalNumber: s.personalNumber ?? '', idNumber: s.idNumber ?? '',
       address: s.address ?? '', birthDate: s.birthDate ?? '',
       permissionLevel: s.permissionLevel, extraPermissions: [...s.extraPermissions],
+      email: s.email ?? '', managedCompanyId: s.managedCompanyId ?? null,
     });
     setShowForm(true);
   }
