@@ -366,6 +366,11 @@ async def google_callback(
         user = db.query(models.User).filter(models.User.google_sub == google_sub).first()
     if not user and email:
         user = db.query(models.User).filter(models.User.email == email).first()
+    if not user and email:
+        # fallback: חייל שמייל Google שלו שמור בטבלת soldiers (ולא ב-users)
+        soldier_by_email = db.query(models.Soldier).filter(models.Soldier.email == email).first()
+        if soldier_by_email:
+            user = db.query(models.User).filter(models.User.soldier_id == soldier_by_email.id).first()
 
     if not user:
         # יצירת User חדש — עדיין לא מקושר לחייל
