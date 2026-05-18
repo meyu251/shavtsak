@@ -85,6 +85,9 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
     db.flush()
     for perm in body.extraPermissions:
         db.add(models.SoldierExtraPermission(id=str(uuid.uuid4()), soldier_id=soldier.id, permission=perm))
+    user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
+    if user:
+        user.email = body.email
     db.commit()
     db.refresh(soldier)
     return soldier_to_out(soldier)
