@@ -69,3 +69,13 @@ def get_visible_section_ids(actor: models.Soldier, db: Session) -> list[str] | N
 
     # soldier — רואה את כל המחלקות (לצורך ספר טלפונים)
     return None
+
+
+def get_actor_company_id(actor: models.Soldier, db: Session) -> str | None:
+    """מחזיר את ה-company_id של ה-actor. None = לא משויך לפלוגה."""
+    if actor.managed_company_id:
+        return actor.managed_company_id
+    if actor.sectionId:
+        section = db.query(models.Section).filter(models.Section.id == actor.sectionId).first()
+        return section.company_id if section else None
+    return None

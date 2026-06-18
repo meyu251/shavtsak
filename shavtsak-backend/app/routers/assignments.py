@@ -4,7 +4,7 @@ from typing import List, Optional
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
-from app.isolation import get_visible_soldier_ids
+from app.isolation import get_visible_soldier_ids, get_actor_company_id
 import uuid
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -48,7 +48,14 @@ def get_assignments(
 
 
 @router.post("", response_model=schemas.AssignmentOut)
-def add_assignment(body: schemas.AssignmentCreate, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
+def add_assignment(body: schemas.AssignmentCreate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    task = db.query(models.TaskTemplate).filter(models.TaskTemplate.id == body.taskId).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="משימה לא נמצאה")
+    company_id = get_actor_company_id(actor, db)
+    if task.company_id != company_id:
+        raise HTTPException(status_code=403, detail="אין הרשאה")
+
     # בדיקה שאין כבר שיבוץ לאותה משימה באותו תאריך
     existing = db.query(models.Assignment).filter(
         models.Assignment.date == body.date,
@@ -77,10 +84,13 @@ def add_assignment(body: schemas.AssignmentCreate, db: Session = Depends(get_db)
 
 
 @router.put("/{assignment_id}", response_model=schemas.AssignmentOut)
-def update_assignment(assignment_id: str, body: schemas.AssignmentUpdate, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
+def update_assignment(assignment_id: str, body: schemas.AssignmentUpdate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
     a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="שיבוץ לא נמצא")
+    company_id = get_actor_company_id(actor, db)
+    if a.task.company_id != company_id:
+        raise HTTPException(status_code=403, detail="אין הרשאה")
 
     # מחיקת כל הנתונים הישנים ויצירה מחדש
     for s in a.soldiers:
@@ -107,10 +117,13 @@ def update_assignment(assignment_id: str, body: schemas.AssignmentUpdate, db: Se
 
 
 @router.delete("/{assignment_id}")
-def delete_assignment(assignment_id: str, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
+def delete_assignment(assignment_id: str, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
     a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="שיבוץ לא נמצא")
+    company_id = get_actor_company_id(actor, db)
+    if a.task.company_id != company_id:
+        raise HTTPException(status_code=403, detail="אין הרשאה")
     db.delete(a)
     db.commit()
     return {"ok": True}

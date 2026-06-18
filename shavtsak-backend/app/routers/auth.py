@@ -205,6 +205,8 @@ def use_reset_code(body: schemas.ResetCodeUseRequest, db: Session = Depends(get_
 @router.post("/login", response_model=schemas.TokenOut)
 def login(body: schemas.LoginRequest, db: Session = Depends(get_db)):
     """כניסה ישירה עם soldierId — לסביבת פיתוח בלבד. מחזיר JWT."""
+    if os.getenv("ENVIRONMENT") == "production":
+        raise HTTPException(status_code=404, detail="Not found")
     soldier = db.query(models.Soldier).filter(models.Soldier.id == body.soldierId).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")

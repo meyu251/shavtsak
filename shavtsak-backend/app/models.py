@@ -126,6 +126,7 @@ class TaskTemplate(Base):
     location = Column(String, default="")
     notes = Column(Text, default="")
     hourly = Column(Boolean, default=False)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=True)
 
     assignments = relationship("Assignment", back_populates="task")
 
@@ -187,6 +188,7 @@ class ExtraContact(Base):
     name = Column(String, nullable=False)
     phone = Column(String, default="")
     notes = Column(Text, default="")
+    company_id = Column(String, ForeignKey("companies.id"), nullable=True)
 
 
 # ── Indexes ───────────────────────────────────────────────────────────────────
