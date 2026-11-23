@@ -55,6 +55,10 @@ All demo users log in on the regular login screen with password `123456`:
 
 The DEV button (top of every inner page, for 1000001) lets you switch to any user without logging out.
 
+### Google login
+
+Google sends users back to `GOOGLE_REDIRECT_URI` (default `BACKEND_URL/auth/google/callback`). In production set it on Render to `https://shavtsack.vercel.app/auth/google/callback` and add the same URL in Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs. Vercel forwards that path to the backend (`next.config.ts`), so the Google window shows the site address instead of the Render address.
+
 ### Windows shortcuts
 
 - `update.bat` — after every update: git pull, backend packages, database migrations, optional demo reset (asks first), frontend build.

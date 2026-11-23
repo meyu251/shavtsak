@@ -22,6 +22,9 @@ GOOGLE_CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 FRONTEND_URL         = os.getenv("FRONTEND_URL", "http://localhost:3000")
 BACKEND_URL          = os.getenv("BACKEND_URL", "http://localhost:8000")
+# הכתובת ש-Google מחזיר אליה אחרי ההתחברות — והדומיין שמוצג למשתמש בחלון של Google.
+# בפרודקשן: https://<האתר>/auth/google/callback, ו-Vercel מעביר את הבקשה לשרת (next.config.ts).
+GOOGLE_REDIRECT_URI  = os.getenv("GOOGLE_REDIRECT_URI", f"{BACKEND_URL}/auth/google/callback")
 
 GOOGLE_AUTH_URL     = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL    = "https://oauth2.googleapis.com/token"
@@ -345,7 +348,7 @@ def google_login():
         raise HTTPException(status_code=500, detail="Google OAuth לא מוגדר בשרת")
     params = {
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": f"{BACKEND_URL}/auth/google/callback",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "online",
@@ -377,7 +380,7 @@ async def google_callback(
             "code": code,
             "client_id": GOOGLE_CLIENT_ID,
             "client_secret": GOOGLE_CLIENT_SECRET,
-            "redirect_uri": f"{BACKEND_URL}/auth/google/callback",
+            "redirect_uri": GOOGLE_REDIRECT_URI,
             "grant_type": "authorization_code",
         })
         if token_res.status_code != 200:
