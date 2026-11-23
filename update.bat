@@ -25,7 +25,7 @@ echo Reset the demo data? This DELETES everything in the database shown above.
 echo Only do this on shavtsak_demo, never on production.
 set /p RESET="Type yes to reset, or just press Enter to skip: "
 if /i "%RESET%"=="yes" (
-  python seed.py || goto :fail
+  python seed.py --reset || goto :fail
 ) else (
   echo Skipped.
 )

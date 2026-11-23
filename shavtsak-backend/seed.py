@@ -2,22 +2,31 @@
 seed.py — מאכלס את בסיס הנתונים עם נתוני ברירת המחדל.
 מקביל ל-defaultData שב-store.ts.
 
-הרצה: python seed.py
+הרצה: python seed.py           (רק על DB ריק)
+       python seed.py --reset   (מוחק את כל הנתונים וזורע מחדש — רק על DB של דמו!)
 """
 
 from app.database import SessionLocal, engine, Base
 from app import models
 from app.routers.auth import pwd_context
 import uuid
+import sys
 
 DEMO_PASSWORD = "123456"
 
 Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
+# ── איפוס (--reset): מוחק את כל השורות בכל הטבלאות, המבנה נשאר ──────────────
+if "--reset" in sys.argv:
+    for table in reversed(Base.metadata.sorted_tables):
+        db.execute(table.delete())
+    db.commit()
+    print("כל הנתונים נמחקו.")
+
 # ── בדיקה שה-DB לא מאוכלס כבר ──────────────────────────────────────────────
 if db.query(models.Soldier).count() > 0:
-    print("ה-DB כבר מאוכלס. אם רוצה לאפס, צור DB ריק, הרץ alembic upgrade head והרץ מחדש.")
+    print("ה-DB כבר מאוכלס. לאיפוס: python seed.py --reset (מוחק הכול!)")
     db.close()
     exit()
 
