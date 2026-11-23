@@ -25,14 +25,20 @@ def get_visible_soldier_ids(actor: models.Soldier, db: Session) -> list[str] | N
                 models.Section.company_id == actor.managed_company_id
             ).all()
         ]
-        if not section_ids:
-            return [actor.id]  # פלוגה ללא מחלקות — רואה רק עצמו
-        ids = [
+        # חיילי המחלקות של הפלוגה + סגל הפלוגה עצמו (מפקדים שמנהלים את הפלוגה ולא שייכים למחלקה)
+        ids = {
             r[0] for r in db.query(models.Soldier.id).filter(
-                models.Soldier.sectionId.in_(section_ids)
+                models.Soldier.managed_company_id == actor.managed_company_id
             ).all()
-        ]
-        return ids or [actor.id]
+        }
+        if section_ids:
+            ids.update(
+                r[0] for r in db.query(models.Soldier.id).filter(
+                    models.Soldier.sectionId.in_(section_ids)
+                ).all()
+            )
+        ids.add(actor.id)
+        return list(ids)
 
     if level == "section_commander":
         if actor.sectionId is None:
