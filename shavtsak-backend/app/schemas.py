@@ -3,7 +3,7 @@ schemas.py — הגדרת צורת הנתונים שנכנסים ויוצאים 
 Pydantic מוודא שהנתונים תקינים לפני שמגיעים לקוד.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, AliasChoices
 from typing import Optional, List
 
 
@@ -21,7 +21,8 @@ class CompanyOut(BaseModel):
     id: str
     name: str
     # validation_alias → קריאה מ-ORM (snake_case), פלט JSON → camelCase
-    battalionId: Optional[str] = Field(None, validation_alias='battalion_id')
+    battalionId: Optional[str] = Field(None, validation_alias=AliasChoices('battalion_id', 'battalionId'))
+    joinCode: Optional[str] = None  # מוצג רק למפקד הפלוגה — קוד הצטרפות למחלקות עצמאיות
     model_config = {"from_attributes": True}
 
 
@@ -38,7 +39,7 @@ class SectionUpdate(BaseModel):
 class SectionOut(BaseModel):
     id: str
     name: str
-    companyId: Optional[str] = Field(None, validation_alias='company_id')
+    companyId: Optional[str] = Field(None, validation_alias=AliasChoices('company_id', 'companyId'))
     model_config = {"from_attributes": True}
 
 
@@ -80,7 +81,8 @@ class SoldierOut(BaseModel):
     permissionLevel: str
     extraPermissions: List[str]
     email: Optional[str]
-    managedCompanyId: Optional[str] = Field(None, validation_alias='managed_company_id')
+    managedCompanyId: Optional[str] = Field(None, validation_alias=AliasChoices('managed_company_id', 'managedCompanyId'))
+    unitIsAuto: bool = False  # המחלקה של החייל היא יחידה עצמאית (פלוגה אוטומטית)
     model_config = {"from_attributes": True}
 
 
@@ -195,6 +197,10 @@ class TokenOut(BaseModel):
 
 class ResetCodeOut(BaseModel):
     code: str  # plain 6-digit code shown once to the commander
+
+class JoinCompanyRequest(BaseModel):
+    code: str
+
 
 class RegisterRequest(BaseModel):
     identifier: str  # personalNumber or idNumber

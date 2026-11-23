@@ -5,6 +5,7 @@ from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
 from app.isolation import get_actor_company_id
+from app import permissions as perms
 import uuid
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
@@ -20,6 +21,7 @@ def get_contacts(db: Session = Depends(get_db), actor: models.Soldier = Depends(
 
 @router.post("", response_model=schemas.ContactOut)
 def add_contact(body: schemas.ContactCreate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.can_manage_people(actor), "אין הרשאה לערוך את ספר הטלפונים")
     company_id = get_actor_company_id(actor, db)
     if company_id is None:
         raise HTTPException(status_code=403, detail="לא משויך לפלוגה")
@@ -32,6 +34,7 @@ def add_contact(body: schemas.ContactCreate, db: Session = Depends(get_db), acto
 
 @router.put("/{contact_id}", response_model=schemas.ContactOut)
 def update_contact(contact_id: str, body: schemas.ContactUpdate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.can_manage_people(actor), "אין הרשאה לערוך את ספר הטלפונים")
     contact = db.query(models.ExtraContact).filter(models.ExtraContact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="איש קשר לא נמצא")
@@ -47,6 +50,7 @@ def update_contact(contact_id: str, body: schemas.ContactUpdate, db: Session = D
 
 @router.delete("/{contact_id}")
 def delete_contact(contact_id: str, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.can_manage_people(actor), "אין הרשאה לערוך את ספר הטלפונים")
     contact = db.query(models.ExtraContact).filter(models.ExtraContact.id == contact_id).first()
     if not contact:
         raise HTTPException(status_code=404, detail="איש קשר לא נמצא")

@@ -4,7 +4,8 @@ from typing import List, Optional
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
-from app.isolation import get_visible_soldier_ids, get_actor_company_id
+from app.isolation import get_visible_soldier_ids, get_actor_company_id, company_soldier_ids
+from app import permissions as perms
 import uuid
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
@@ -25,6 +26,17 @@ def assignment_to_out(a: models.Assignment) -> schemas.AssignmentOut:
     )
 
 
+def _check_write(actor: models.Soldier, task: models.TaskTemplate, body, db: Session):
+    """שיבוץ: רק מי שמורשה לשבץ, רק למשימות של הפלוגה, ורק חיילים מהפלוגה."""
+    perms.require(perms.can_schedule(actor), "אין הרשאה לשבץ")
+    company_id = get_actor_company_id(actor, db)
+    perms.require(company_id is not None and task.company_id == company_id, "אין הרשאה")
+    soldier_ids = set(body.soldierIds) | {sid for slot in body.slots for sid in slot.soldierIds}
+    members = set(company_soldier_ids(company_id, db))
+    perms.require(soldier_ids <= members, "אחד החיילים לא שייך ליחידה שלך")
+
+
+
 @router.get("", response_model=List[schemas.AssignmentOut])
 def get_assignments(
     date: Optional[str] = Query(None, description="YYYY-MM-DD"),
@@ -32,8 +44,13 @@ def get_assignments(
     actor: models.Soldier = Depends(get_current_soldier),
 ):
     visible = get_visible_soldier_ids(actor, db)
+    company_id = get_actor_company_id(actor, db)
+    if company_id is None:
+        return []
 
-    q = db.query(models.Assignment)
+    # רק שיבוצים של משימות הפלוגה שלי
+    q = db.query(models.Assignment).join(models.TaskTemplate, models.Assignment.taskId == models.TaskTemplate.id) \
+        .filter(models.TaskTemplate.company_id == company_id)
     if date:
         q = q.filter(models.Assignment.date == date)
     if visible is not None:
@@ -52,9 +69,7 @@ def add_assignment(body: schemas.AssignmentCreate, db: Session = Depends(get_db)
     task = db.query(models.TaskTemplate).filter(models.TaskTemplate.id == body.taskId).first()
     if not task:
         raise HTTPException(status_code=404, detail="משימה לא נמצאה")
-    company_id = get_actor_company_id(actor, db)
-    if task.company_id != company_id:
-        raise HTTPException(status_code=403, detail="אין הרשאה")
+    _check_write(actor, task, body, db)
 
     # בדיקה שאין כבר שיבוץ לאותה משימה באותו תאריך
     existing = db.query(models.Assignment).filter(
@@ -88,9 +103,7 @@ def update_assignment(assignment_id: str, body: schemas.AssignmentUpdate, db: Se
     a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="שיבוץ לא נמצא")
-    company_id = get_actor_company_id(actor, db)
-    if a.task.company_id != company_id:
-        raise HTTPException(status_code=403, detail="אין הרשאה")
+    _check_write(actor, a.task, body, db)
 
     # מחיקת כל הנתונים הישנים ויצירה מחדש
     for s in a.soldiers:
@@ -121,6 +134,7 @@ def delete_assignment(assignment_id: str, db: Session = Depends(get_db), actor: 
     a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="שיבוץ לא נמצא")
+    perms.require(perms.can_schedule(actor), "אין הרשאה לשבץ")
     company_id = get_actor_company_id(actor, db)
     if a.task.company_id != company_id:
         raise HTTPException(status_code=403, detail="אין הרשאה")

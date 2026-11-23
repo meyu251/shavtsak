@@ -46,6 +46,7 @@ def soldier_to_out(s: models.Soldier) -> schemas.SoldierOut:
         extraPermissions=[ep.permission for ep in s.extra_permissions],
         email=s.email,
         managedCompanyId=s.managed_company_id,
+        unitIsAuto=bool(s.section and s.section.company and s.section.company.is_auto),
     )
 
 
@@ -153,6 +154,9 @@ def create_reset_code(
     target = db.query(models.Soldier).filter(models.Soldier.id == body.soldierId).first()
     if not target:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")
+    # רק לחיילים ביחידה שלך (אחרת מפקד מיחידה אחת יכול להשתלט על חשבון ביחידה אחרת)
+    from app import permissions as perms
+    perms.require(perms.can_edit_soldier(current_soldier, target, db), "אין הרשאה לאפס סיסמא לחייל זה")
 
     user = db.query(models.User).filter(models.User.soldier_id == target.id).first()
     if not user:

@@ -5,6 +5,7 @@ from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
 from app.isolation import get_visible_soldier_ids, get_actor_company_id
+from app import permissions as perms
 import uuid
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
@@ -20,6 +21,7 @@ def soldier_to_out(s: models.Soldier) -> schemas.SoldierOut:
         extraPermissions=[ep.permission for ep in s.extra_permissions],
         email=s.email,
         managedCompanyId=s.managed_company_id,
+        unitIsAuto=bool(s.section and s.section.company and s.section.company.is_auto),
     )
 
 
@@ -59,9 +61,53 @@ def _normalize_and_check(body, db: Session, soldier_id: str | None = None):
             raise HTTPException(status_code=409, detail=f"{label} זה כבר רשום לחייל אחר")
 
 
+VALID_LEVELS = {"soldier", "section_commander", "company_commander"}
+VALID_EXTRAS = {"extended_data", "management", "schedule", "tasks"}
+
+
+def _check_assignment_fields(actor: models.Soldier, body, db: Session, target: models.Soldier | None):
+    """
+    בודק שדות "רגישים": מחלקה, רמת הרשאה, פלוגה מנוהלת והרשאות נוספות.
+    target=None → הוספת חייל חדש.
+    """
+    old_section = target.sectionId if target else None
+    old_level = target.permissionLevel if target else "soldier"
+    old_managed = target.managed_company_id if target else None
+    old_extras = {ep.permission for ep in target.extra_permissions} if target else set()
+    actor_company = get_actor_company_id(actor, db)
+
+    if body.permissionLevel not in VALID_LEVELS:
+        perms.forbid("רמת הרשאה לא תקינה")
+    if not set(body.extraPermissions) <= VALID_EXTRAS:
+        perms.forbid("הרשאה לא תקינה")
+
+    # מחלקה — רק מחלקה בפלוגה של ה-actor; מפקד מחלקה — רק המחלקה שלו
+    if body.sectionId != old_section:
+        if body.sectionId is not None:
+            perms.require(perms.section_in_actor_company(actor, body.sectionId, db), "המחלקה לא שייכת ליחידה שלך")
+        if not perms.is_company_commander(actor):
+            perms.require(body.sectionId == actor.sectionId, "רק מפקד פלוגה יכול להעביר חייל בין מחלקות")
+
+    # רמת הרשאה ופלוגה מנוהלת — רק מפקד פלוגה, ורק בתוך הפלוגה שלו
+    if body.permissionLevel != old_level:
+        perms.require(perms.is_company_commander(actor), "רק מפקד פלוגה יכול לשנות רמת הרשאה")
+    if body.managedCompanyId != old_managed:
+        perms.require(perms.is_company_commander(actor), "רק מפקד פלוגה יכול לשנות שיוך פלוגה")
+        perms.require(body.managedCompanyId in (None, actor_company), "אפשר לשייך רק לפלוגה שלך")
+
+    # הרשאות נוספות — לפי כללי הענקת הרשאות
+    if set(body.extraPermissions) != old_extras:
+        if target is None:
+            perms.require(perms.can_manage_people(actor), "אין הרשאה להעניק הרשאות")
+        else:
+            perms.require(perms.can_grant_permissions(actor, target), "אין הרשאה להעניק הרשאות לחייל זה")
+
+
 @router.get("/public")
-def get_soldiers_public(db: Session = Depends(get_db)):
-    """ללא אימות — מחזיר רק שדות בסיסיים לדף הכניסה."""
+def get_soldiers_public(db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    """רשימה מינימלית לפאנל ההתחזות — למפתחים בלבד (דורש התחברות)."""
+    user = db.query(models.User).filter(models.User.soldier_id == actor.id).first()
+    perms.require(bool(user and user.is_developer), "למפתחים בלבד")
     soldiers = db.query(models.Soldier).filter(models.Soldier.isActive == True).all()
     return [
         {"id": s.id, "firstName": s.firstName, "lastName": s.lastName,
@@ -81,6 +127,11 @@ def get_soldiers(db: Session = Depends(get_db), actor: models.Soldier = Depends(
 
 @router.post("", response_model=schemas.SoldierOut)
 def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.is_company_commander(actor) or perms.is_section_commander(actor), "אין הרשאה להוסיף חיילים")
+    if perms.is_section_commander(actor):
+        body.sectionId = actor.sectionId  # מפקד מחלקה מוסיף רק למחלקה שלו
+    _check_assignment_fields(actor, body, db, None)
+    perms.require(get_actor_company_id(actor, db) is not None, "לא משויך לפלוגה")
     _normalize_and_check(body, db)
     soldier = models.Soldier(
         id=str(uuid.uuid4()),
@@ -95,36 +146,55 @@ def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), acto
     )
     db.add(soldier)
     db.flush()
-    for perm in body.extraPermissions:
+    for perm in set(body.extraPermissions):
         db.add(models.SoldierExtraPermission(id=str(uuid.uuid4()), soldier_id=soldier.id, permission=perm))
     db.commit()
     db.refresh(soldier)
     return soldier_to_out(soldier)
 
 
+# שדות שחייל רשאי לעדכן בעצמו (דף הפרופיל)
+SELF_EDITABLE = ["firstName", "lastName", "phone", "address", "birthDate", "email",
+                 "personalNumber", "idNumber", "rank", "role"]
+
+
 @router.put("/{soldier_id}", response_model=schemas.SoldierOut)
 def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
-    # בדיקת הרשאת גישה
-    visible = get_visible_soldier_ids(actor, db)
-    if visible is not None and soldier_id not in visible:
-        raise HTTPException(status_code=403, detail="אין הרשאה לערוך חייל זה")
-
     soldier = db.query(models.Soldier).filter(models.Soldier.id == soldier_id).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")
+
+    if perms.can_edit_soldier(actor, soldier, db):
+        _check_assignment_fields(actor, body, db, soldier)
+        fields = SELF_EDITABLE + ["isActive", "sectionId", "permissionLevel"]
+        manage_fields = True
+    elif actor.id == soldier.id:
+        # עריכה עצמית: מותר לשנות פרטים אישיים, אסור לשנות הרשאות / מחלקה / סטטוס
+        locked_changed = (
+            body.sectionId != soldier.sectionId
+            or body.permissionLevel != soldier.permissionLevel
+            or body.managedCompanyId != soldier.managed_company_id
+            or body.isActive != soldier.isActive
+            or set(body.extraPermissions) != {ep.permission for ep in soldier.extra_permissions}
+        )
+        perms.require(not locked_changed, "אי אפשר לשנות לעצמך הרשאות, מחלקה או סטטוס")
+        fields = SELF_EDITABLE
+        manage_fields = False
+    else:
+        perms.forbid("אין הרשאה לערוך חייל זה")
+
     _normalize_and_check(body, db, soldier_id)
-    for field in ["firstName", "lastName", "phone", "role", "rank", "isActive",
-                  "sectionId", "personalNumber", "idNumber", "address", "birthDate",
-                  "permissionLevel", "email"]:
+    for field in fields:
         setattr(soldier, field, getattr(body, field))
-    soldier.managed_company_id = body.managedCompanyId
-    soldier.company_id = _soldier_company_id(body.sectionId, actor, db, fallback=soldier.company_id)
-    # עדכון הרשאות נוספות — מחיקה ויצירה מחדש
-    for ep in soldier.extra_permissions:
-        db.delete(ep)
-    db.flush()
-    for perm in body.extraPermissions:
-        db.add(models.SoldierExtraPermission(id=str(uuid.uuid4()), soldier_id=soldier.id, permission=perm))
+    if manage_fields:
+        soldier.managed_company_id = body.managedCompanyId
+        soldier.company_id = _soldier_company_id(body.sectionId, actor, db, fallback=soldier.company_id)
+        # עדכון הרשאות נוספות — מחיקה ויצירה מחדש
+        for ep in soldier.extra_permissions:
+            db.delete(ep)
+        db.flush()
+        for perm in set(body.extraPermissions):
+            db.add(models.SoldierExtraPermission(id=str(uuid.uuid4()), soldier_id=soldier.id, permission=perm))
     user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
     if user and body.email and user.email != body.email:
         # מייל של חשבון אחר שלא מקושר לאף חייל (ניסיון Google ישן) — משחררים אותו
@@ -142,17 +212,16 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
 
 @router.delete("/{soldier_id}")
 def delete_soldier(soldier_id: str, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
-    # בדיקת הרשאת גישה
-    visible = get_visible_soldier_ids(actor, db)
-    if visible is not None and soldier_id not in visible:
-        raise HTTPException(status_code=403, detail="אין הרשאה למחוק חייל זה")
-
     soldier = db.query(models.Soldier).filter(models.Soldier.id == soldier_id).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")
+    perms.require(perms.can_delete_soldier(actor, soldier, db), "אין הרשאה למחוק חייל זה")
     user = db.query(models.User).filter(models.User.soldier_id == soldier_id).first()
     if user:
         user.soldier_id = None
+    # הסרת החייל מכל השיבוצים (אחרת המחיקה נכשלת על מפתח זר)
+    db.query(models.AssignmentSoldier).filter(models.AssignmentSoldier.soldier_id == soldier_id).delete(synchronize_session=False)
+    db.query(models.HourSlotSoldier).filter(models.HourSlotSoldier.soldier_id == soldier_id).delete(synchronize_session=False)
     db.delete(soldier)
     db.commit()
     return {"ok": True}

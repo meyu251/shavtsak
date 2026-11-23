@@ -14,6 +14,13 @@ def new_id():
     return str(uuid.uuid4())
 
 
+def new_join_code():
+    """קוד הצטרפות קצר לפלוגה — בלי תווים שקל להתבלבל ביניהם (0/O, 1/I)."""
+    import secrets
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
 # ── Companies (פלוגות) ────────────────────────────────────────────────────────
 
 class Company(Base):
@@ -26,6 +33,8 @@ class Company(Base):
     # כל מחלקה מקבלת עוטפת משלה (אף פעם לא משותפת). כשהמחלקה משויכת לפלוגה
     # אמיתית, הנתונים עוברים אליה והעוטפת נמחקת (ראה isolation.move_section_to_company).
     is_auto = Column(Boolean, default=False, nullable=False)
+    # קוד שמפקד הפלוגה מעביר למפקד מחלקה עצמאית כדי שיצטרף לפלוגה
+    join_code = Column(String, nullable=True, unique=True, default=new_join_code)
 
     sections = relationship("Section", back_populates="company")
 

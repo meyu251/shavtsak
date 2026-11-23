@@ -5,6 +5,7 @@ from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
 from app.isolation import get_actor_company_id
+from app import permissions as perms
 import uuid
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -20,6 +21,7 @@ def get_tasks(db: Session = Depends(get_db), actor: models.Soldier = Depends(get
 
 @router.post("", response_model=schemas.TaskOut)
 def add_task(body: schemas.TaskCreate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.can_manage_tasks(actor), "אין הרשאה לנהל משימות")
     company_id = get_actor_company_id(actor, db)
     if company_id is None:
         raise HTTPException(status_code=403, detail="לא משויך לפלוגה")
@@ -32,6 +34,7 @@ def add_task(body: schemas.TaskCreate, db: Session = Depends(get_db), actor: mod
 
 @router.put("/{task_id}", response_model=schemas.TaskOut)
 def update_task(task_id: str, body: schemas.TaskUpdate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.can_manage_tasks(actor), "אין הרשאה לנהל משימות")
     task = db.query(models.TaskTemplate).filter(models.TaskTemplate.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="משימה לא נמצאה")
@@ -47,12 +50,16 @@ def update_task(task_id: str, body: schemas.TaskUpdate, db: Session = Depends(ge
 
 @router.delete("/{task_id}")
 def delete_task(task_id: str, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    perms.require(perms.can_manage_tasks(actor), "אין הרשאה לנהל משימות")
     task = db.query(models.TaskTemplate).filter(models.TaskTemplate.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="משימה לא נמצאה")
     company_id = get_actor_company_id(actor, db)
     if task.company_id != company_id:
         raise HTTPException(status_code=403, detail="אין הרשאה")
+    # מחיקת משימה מוחקת גם את השיבוצים שלה (אחרת המחיקה נכשלת על מפתח זר)
+    for a in task.assignments:
+        db.delete(a)
     db.delete(task)
     db.commit()
     return {"ok": True}
