@@ -7,21 +7,30 @@ seed.py — מאכלס את בסיס הנתונים עם נתוני ברירת �
 
 from app.database import SessionLocal, engine, Base
 from app import models
+from app.routers.auth import pwd_context
 import uuid
+
+DEMO_PASSWORD = "123456"
 
 Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
 # ── בדיקה שה-DB לא מאוכלס כבר ──────────────────────────────────────────────
 if db.query(models.Soldier).count() > 0:
-    print("ה-DB כבר מאוכלס. אם רוצה לאפס, מחק את shavtsak.db והרץ מחדש.")
+    print("ה-DB כבר מאוכלס. אם רוצה לאפס, צור DB ריק, הרץ alembic upgrade head והרץ מחדש.")
     db.close()
     exit()
 
-# ── מחלקות ───────────────────────────────────────────────────────────────────
-section1 = models.Section(id="section1", name="מחלקה 1")
-section2 = models.Section(id="section2", name="מחלקה 2")
-db.add_all([section1, section2])
+# ── פלוגות ומחלקות ───────────────────────────────────────────────────────────
+company = models.Company(id="company1", name="פלוגה א")
+# יחידה נפרדת לגמרי — לבדיקה שהנתונים לא מתערבבים בין יחידות
+auto_company = models.Company(id="company_auto1", name="מחלקה עצמאית", is_auto=True)
+db.add_all([company, auto_company])
+db.flush()
+section1 = models.Section(id="section1", name="מחלקה 1", company_id="company1")
+section2 = models.Section(id="section2", name="מחלקה 2", company_id="company1")
+section3 = models.Section(id="section3", name="מחלקה עצמאית", company_id="company_auto1")
+db.add_all([section1, section2, section3])
 db.flush()
 
 # ── חיילים ───────────────────────────────────────────────────────────────────
@@ -42,10 +51,25 @@ soldiers_data = [
          role="לוחם", isActive=True, sectionId="section2", permissionLevel="soldier"),
     dict(id="8", firstName="טאי", lastName="ארזואן", rank="טוראי", phone="050-8234567",
          role="לוחם", isActive=True, sectionId="section1", permissionLevel="soldier"),
+    dict(id="9", firstName="דנה", lastName="כהן", rank="סמל", phone="050-9234567",
+         role="מפקדת מחלקה", isActive=True, sectionId="section3", permissionLevel="section_commander"),
 ]
 
 for s in soldiers_data:
+    s["personalNumber"] = f"100000{s['id']}"
+    if s["id"] == "1":
+        s["managed_company_id"] = "company1"
     db.add(models.Soldier(**s))
+db.flush()
+
+# ── חשבונות משתמש (כולם עם אותה סיסמת דמו) ──────────────────────────────────
+for s in soldiers_data:
+    db.add(models.User(
+        id=f"user{s['id']}",
+        soldier_id=s["id"],
+        password_hash=pwd_context.hash(DEMO_PASSWORD),
+        is_developer=(s["id"] == "1"),  # מפקד הפלוגה רואה את פאנל ההתחזות
+    ))
 db.flush()
 
 # ── משימות ───────────────────────────────────────────────────────────────────
@@ -58,14 +82,15 @@ tasks_data = [
 ]
 
 for t in tasks_data:
-    db.add(models.TaskTemplate(**t))
+    db.add(models.TaskTemplate(company_id="company1", **t))
+db.add(models.TaskTemplate(id="6", name="שמירה במחלקה העצמאית", startTime="08:00", endTime="16:00",
+                           requiredCount=1, location="", notes="", hourly=False, company_id="company_auto1"))
 
 db.commit()
 db.close()
 
 print("✅ בסיס הנתונים אוכלס בהצלחה!")
 print()
-print("עכשיו אפשר להתחבר עם POST /auth/login")
-print('דוגמה: { "soldierId": "1" }  ← מאיר יוסט (מפקד פלוגה)')
-print('דוגמה: { "soldierId": "2" }  ← ניר לוסטיג (מפקד מחלקה)')
-print('דוגמה: { "soldierId": "5" }  ← יגאל שטיינמיץ (חייל)')
+print(f"כניסה במסך הרגיל עם מספר אישי וסיסמא {DEMO_PASSWORD}:")
+for s in soldiers_data:
+    print(f"  {s['personalNumber']}  {s['firstName']} {s['lastName']} ({s['role']})")

@@ -185,13 +185,18 @@ function RegisterForm({ onSuccess, onBack }: {
 
 // ── Claim form ────────────────────────────────────────────────────────────────
 
-function ClaimForm({ userId, onSuccess, onError }: {
+function ClaimForm({ userId, onSuccess, onError, onCreateUnit }: {
   userId: string;
   onSuccess: (token: string, soldier: Soldier) => void;
   onError: (msg: string) => void;
+  onCreateUnit: () => void;
 }) {
   const [personalNumber, setPersonalNumber] = useState("");
   const [idNumber, setIdNumber] = useState("");
+  // לחייל כבר יש חשבון עם סיסמא — מבקשים אותה כדי לחבר אליו את Google
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [password, setPassword] = useState("");
+  const [notFound, setNotFound] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -203,19 +208,27 @@ function ClaimForm({ userId, onSuccess, onError }: {
     }
     setSubmitting(true);
     setLocalError(null);
+    setNotFound(false);
     try {
       const { access_token, soldier } = await claimSoldier(
         userId,
         personalNumber.trim() || undefined,
         idNumber.trim() || undefined,
+        needsPassword ? password : undefined,
       );
       onSuccess(access_token, soldier);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "שגיאה";
-      if (msg.includes("כבר מקושר")) {
+      if (msg === "password_required") {
+        setNeedsPassword(true);
+        setLocalError("כבר יש לך חשבון עם סיסמא. הזן אותה כדי לחבר אליו את Google.");
+      } else if (msg.includes("סיסמא שגויה")) {
+        setLocalError("סיסמא שגויה.");
+      } else if (msg.includes("כבר מקושר")) {
         setLocalError("המספר כבר מקושר למשתמש אחר — פנה למפקד.");
       } else if (msg.includes("לא נמצא")) {
-        setLocalError("לא נמצא חייל עם הפרטים שהזנת. בדוק שוב או פנה למפקד.");
+        setNotFound(true);
+        setLocalError("לא נמצא חייל עם הפרטים שהזנת. בדוק שוב או בקש מהמפקד להוסיף אותך.");
       } else {
         onError(msg);
       }
@@ -245,11 +258,24 @@ function ClaimForm({ userId, onSuccess, onError }: {
           onChange={e => setIdNumber(e.target.value)}
           placeholder="לדוגמה: 123456789" className={inputCls} />
       </div>
+      {needsPassword && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא</label>
+          <input type="password" dir="ltr" value={password} autoFocus
+            onChange={e => setPassword(e.target.value)} className={inputCls} />
+        </div>
+      )}
       {localError && <p className="text-red-600 text-sm text-center bg-red-50 rounded-lg px-3 py-2">{localError}</p>}
       <button type="submit" disabled={submitting}
         className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
         {submitting ? "מאמת..." : "המשך"}
       </button>
+      {notFound && (
+        <button type="button" onClick={onCreateUnit}
+          className="w-full text-sm text-blue-600 hover:underline cursor-pointer">
+          מקים מחלקה או פלוגה חדשה? צור מסגרת חדשה
+        </button>
+      )}
     </form>
   );
 }
@@ -664,13 +690,20 @@ function LoginPageInner() {
     setState({ mode: "login" });
   }, [params, router]);
 
-  function handleLoginSuccess(token: string, soldier: Soldier) {
+  async function handleLoginSuccess(token: string, soldier: Soldier) {
     if (!soldier.hasPassword) {
       setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier });
-    } else {
-      saveSession(token, soldier);
-      router.replace("/");
+      return;
     }
+    // תשובת הכניסה לא כוללת isDeveloper — משלימים מ-/auth/me כדי שפאנל ה-DEV יופיע
+    localStorage.setItem("shavtsak_token", token);
+    let full: Soldier = soldier;
+    try {
+      const me = await getMe();
+      full = { ...soldier, ...me };
+    } catch { /* ממשיכים עם מה שיש */ }
+    saveSession(token, full);
+    router.replace("/");
   }
 
   function handleSetPasswordDone() {
@@ -720,6 +753,7 @@ function LoginPageInner() {
         userId={state.claimUserId}
         onSuccess={(token, soldier) => handleLoginSuccess(token, soldier)}
         onError={msg => setState({ mode: "error", errorMessage: msg })}
+        onCreateUnit={() => setState({ mode: "create-unit" })}
       />
     );
   }

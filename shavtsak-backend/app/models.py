@@ -22,6 +22,10 @@ class Company(Base):
     id = Column(String, primary_key=True, default=new_id)
     name = Column(String, nullable=False)
     battalion_id = Column(String, nullable=True)  # ללא FK — לשימוש עתידי עם טבלת גדודים
+    # פלוגה "אוטומטית" — נוצרת כדי לעטוף מחלקה בודדת שאין לה פלוגה אמיתית.
+    # כל מחלקה מקבלת עוטפת משלה (אף פעם לא משותפת). כשהמחלקה משויכת לפלוגה
+    # אמיתית, הנתונים עוברים אליה והעוטפת נמחקת (ראה isolation.move_section_to_company).
+    is_auto = Column(Boolean, default=False, nullable=False)
 
     sections = relationship("Section", back_populates="company")
 

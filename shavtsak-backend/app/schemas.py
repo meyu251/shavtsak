@@ -175,6 +175,7 @@ class ClaimRequest(BaseModel):
     userId: str
     personalNumber: Optional[str] = None
     idNumber: Optional[str] = None
+    password: Optional[str] = None  # נדרש כשלחייל כבר יש חשבון עם סיסמא
 
 class SetPasswordRequest(BaseModel):
     password: str

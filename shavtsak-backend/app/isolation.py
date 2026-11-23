@@ -6,6 +6,7 @@ None = אין הגבלה (רואה הכל).
 
 from sqlalchemy.orm import Session
 from app import models
+import uuid
 
 
 def get_visible_soldier_ids(actor: models.Soldier, db: Session) -> list[str] | None:
@@ -79,3 +80,44 @@ def get_actor_company_id(actor: models.Soldier, db: Session) -> str | None:
         section = db.query(models.Section).filter(models.Section.id == actor.sectionId).first()
         return section.company_id if section else None
     return None
+
+
+# ── פלוגות אוטומטיות (עוטפות מחלקה בודדת) ─────────────────────────────────────
+
+def create_auto_company(section_name: str, db: Session) -> models.Company:
+    """יוצר פלוגה אוטומטית חדשה ופרטית למחלקה אחת. לעולם לא משותפת בין מחלקות."""
+    company = models.Company(id=str(uuid.uuid4()), name=section_name, is_auto=True)
+    db.add(company)
+    db.flush()
+    return company
+
+
+def move_section_to_company(section: models.Section, new_company_id: str | None, db: Session) -> None:
+    """
+    משייך מחלקה לפלוגה. אם new_company_id ריק — המחלקה מקבלת פלוגה אוטומטית משלה.
+    אם המחלקה יוצאת מפלוגה אוטומטית — המשימות ואנשי הקשר עוברים לפלוגה החדשה,
+    והפלוגה האוטומטית נמחקת כשלא נשארו בה מחלקות.
+    """
+    old_company = section.company
+    if new_company_id is None:
+        if old_company is not None and old_company.is_auto:
+            return  # כבר בעוטפת משלה
+        section.company_id = create_auto_company(section.name, db).id
+        db.flush()
+        return
+    if old_company is not None and old_company.id == new_company_id:
+        return
+
+    section.company_id = new_company_id
+    db.flush()
+    if old_company is not None and old_company.is_auto:
+        db.query(models.TaskTemplate).filter(models.TaskTemplate.company_id == old_company.id) \
+            .update({"company_id": new_company_id}, synchronize_session=False)
+        db.query(models.ExtraContact).filter(models.ExtraContact.company_id == old_company.id) \
+            .update({"company_id": new_company_id}, synchronize_session=False)
+        remaining = db.query(models.Section).filter(models.Section.company_id == old_company.id).count()
+        if remaining == 0:
+            db.query(models.Soldier).filter(models.Soldier.managed_company_id == old_company.id) \
+                .update({"managed_company_id": None}, synchronize_session=False)
+            db.delete(old_company)
+            db.flush()

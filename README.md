@@ -32,6 +32,29 @@ venv\Scripts\activate
 python -m alembic upgrade head
 ```
 
+## Demo data (fresh database)
+
+Run on an empty PostgreSQL database (set `DATABASE_URL` in `shavtsak-backend/.env`):
+
+```bash
+cd shavtsak-backend
+venv\Scripts\activate
+python -m alembic upgrade head
+python seed.py
+```
+
+All demo users log in on the regular login screen with password `123456`:
+
+| Personal number | User | Role |
+|---|---|---|
+| 1000001 | מאיר יוסט | Company commander (פלוגה א), has the DEV impersonation panel |
+| 1000002 | ניר לוסטיג | Section commander, מחלקה 1 |
+| 1000003 | מיכאל ירט | Section commander, מחלקה 2 |
+| 1000004–1000008 | | Soldiers |
+| 1000009 | דנה כהן | Section commander of a separate, independent unit (to check data isolation) |
+
+The DEV button (top of every inner page, for 1000001) lets you switch to any user without logging out.
+
 ## Local network (phone testing)
 
 ```bash

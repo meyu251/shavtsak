@@ -11,6 +11,7 @@ from passlib.context import CryptContext
 from app.database import get_db
 from app import models, schemas
 from app.auth import create_token, get_current_soldier
+from app.isolation import create_auto_company
 import uuid
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -51,15 +52,22 @@ def soldier_to_out(s: models.Soldier) -> schemas.SoldierOut:
 # ── Password login ───────────────────────────────────────────────────────────
 
 def _find_soldier_by_identifier(identifier: str, db: Session):
-    """Find soldier by personalNumber or idNumber."""
-    soldier = db.query(models.Soldier).filter(
-        models.Soldier.personalNumber == identifier.strip()
-    ).first()
-    if not soldier:
-        soldier = db.query(models.Soldier).filter(
-            models.Soldier.idNumber == identifier.strip()
-        ).first()
-    return soldier
+    """
+    Find soldier by personalNumber or idNumber.
+    אם יש כמה חיילים עם אותו מספר (נתונים ישנים), מעדיפים את זה שיש לו חשבון —
+    אחרת הכניסה הייתה נכשלת באקראי עם "פרטים שגויים".
+    """
+    ident = identifier.strip()
+    if not ident:
+        return None
+    for field in (models.Soldier.personalNumber, models.Soldier.idNumber):
+        matches = db.query(models.Soldier).filter(field == ident).all()
+        if matches:
+            for s in matches:
+                if db.query(models.User).filter(models.User.soldier_id == s.id).first():
+                    return s
+            return matches[0]
+    return None
 
 
 @router.post("/register", response_model=schemas.TokenOut)
@@ -272,23 +280,35 @@ def claim_soldier(body: schemas.ClaimRequest, db: Session = Depends(get_db)):
     # חיפוש חייל לפי מספר אישי (עדיפות), אחר כך לפי ת"ז
     soldier = None
     if body.personalNumber:
-        soldier = db.query(models.Soldier).filter(
-            models.Soldier.personalNumber == body.personalNumber.strip()
-        ).first()
+        soldier = _find_soldier_by_identifier(body.personalNumber, db)
     if not soldier and body.idNumber:
-        soldier = db.query(models.Soldier).filter(
-            models.Soldier.idNumber == body.idNumber.strip()
-        ).first()
+        soldier = _find_soldier_by_identifier(body.idNumber, db)
 
     if not soldier:
         raise HTTPException(status_code=404, detail="לא נמצא חייל עם המספר שהוזן")
 
-    # בדיקה שהחייל לא כבר תפוס על ידי משתמש אחר
+    # החייל כבר מקושר לחשבון אחר (למשל נרשם קודם עם סיסמא).
+    # אם המשתמש מוכיח בעלות עם הסיסמא — מחברים את Google לחשבון הקיים.
     existing = db.query(models.User).filter(
         models.User.soldier_id == soldier.id
     ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="חייל זה כבר מקושר למשתמש אחר — פנה למפקד")
+        if not existing.password_hash:
+            raise HTTPException(status_code=409, detail="חייל זה כבר מקושר למשתמש אחר — פנה למפקד")
+        if not body.password:
+            raise HTTPException(status_code=409, detail="password_required")
+        if not pwd_context.verify(body.password, existing.password_hash):
+            raise HTTPException(status_code=401, detail="סיסמא שגויה")
+        email, google_sub = user.email, user.google_sub
+        db.delete(user)
+        db.flush()
+        if email and not existing.email:
+            existing.email = email
+        if google_sub:
+            existing.google_sub = google_sub
+        db.commit()
+        token = create_token(soldier.id)
+        return schemas.TokenOut(access_token=token, soldier=soldier_to_out(soldier))
 
     user.soldier_id = soldier.id
     db.commit()
@@ -436,10 +456,12 @@ def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
     company_id = None
 
     if body.unitType == "section":
+        # מחלקה עצמאית מקבלת פלוגה אוטומטית פרטית משלה (לא משותפת עם אף מחלקה אחרת)
+        auto_company = create_auto_company(body.unitName.strip(), db)
         section = models.Section(
             id=str(uuid.uuid4()),
             name=body.unitName.strip(),
-            company_id=None,
+            company_id=auto_company.id,
         )
         db.add(section)
         db.flush()

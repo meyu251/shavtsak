@@ -4,7 +4,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
-from app.isolation import get_visible_section_ids
+from app.isolation import get_visible_section_ids, create_auto_company, move_section_to_company
 import uuid
 
 router = APIRouter(prefix="/sections", tags=["sections"])
@@ -21,7 +21,9 @@ def get_sections(db: Session = Depends(get_db), actor: models.Soldier = Depends(
 
 @router.post("", response_model=schemas.SectionOut)
 def add_section(body: schemas.SectionCreate, db: Session = Depends(get_db), _=Depends(get_current_soldier)):
-    section = models.Section(id=str(uuid.uuid4()), name=body.name, company_id=body.company_id)
+    # מחלקה בלי פלוגה מקבלת פלוגה אוטומטית משלה, כדי שתמיד יהיה לה מרחב נתונים נפרד
+    company_id = body.company_id or create_auto_company(body.name, db).id
+    section = models.Section(id=str(uuid.uuid4()), name=body.name, company_id=company_id)
     db.add(section)
     db.commit()
     db.refresh(section)
@@ -39,7 +41,7 @@ def update_section(section_id: str, body: schemas.SectionUpdate, db: Session = D
     if not section:
         raise HTTPException(status_code=404, detail="מחלקה לא נמצאה")
     section.name = body.name
-    section.company_id = body.company_id
+    move_section_to_company(section, body.company_id, db)
     db.commit()
     db.refresh(section)
     return section

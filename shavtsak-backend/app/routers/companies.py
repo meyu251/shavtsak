@@ -22,7 +22,7 @@ def get_companies(db: Session = Depends(get_db), actor: models.Soldier = Depends
     # מפקד פלוגה ללא שיוך — רואה הכל (אחורה תואם)
     # רמות נמוכות — מחזיר רשימה ריקה (אין להם צורך בפלוגות)
     if actor.permissionLevel == "company_commander":
-        return db.query(models.Company).all()
+        return db.query(models.Company).filter(models.Company.is_auto.is_(False)).all()
 
     return []
 
@@ -76,8 +76,17 @@ def delete_company(
     company = db.query(models.Company).filter(models.Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="פלוגה לא נמצאה")
-    # ניתוק המחלקות מהפלוגה
-    db.query(models.Section).filter(models.Section.company_id == company_id).update({"company_id": None})
+    # ניתוק המחלקות מהפלוגה — כל מחלקה מקבלת פלוגה אוטומטית משלה
+    from app.isolation import create_auto_company
+    for section in db.query(models.Section).filter(models.Section.company_id == company_id).all():
+        section.company_id = create_auto_company(section.name, db).id
+    # משימות (עם השיבוצים שלהן) ואנשי קשר של הפלוגה נמחקים איתה
+    for task in db.query(models.TaskTemplate).filter(models.TaskTemplate.company_id == company_id).all():
+        for a in task.assignments:
+            db.delete(a)
+        db.delete(task)
+    db.query(models.ExtraContact).filter(models.ExtraContact.company_id == company_id).delete(synchronize_session=False)
+    db.flush()
     # ניתוק מפקדים שמנוהלים תחת פלוגה זו
     db.query(models.Soldier).filter(models.Soldier.managed_company_id == company_id).update({"managed_company_id": None})
     db.delete(company)

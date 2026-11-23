@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -23,6 +23,33 @@ def soldier_to_out(s: models.Soldier) -> schemas.SoldierOut:
     )
 
 
+def _clean(v):
+    """מחרוזת ריקה → None. שדות ייחודיים (מייל) לא יכולים להכיל "" אצל כמה חיילים."""
+    if v is None:
+        return None
+    v = v.strip()
+    return v or None
+
+
+def _normalize_and_check(body, db: Session, soldier_id: str | None = None):
+    """מנקה שדות מזהים ובודק שמספר אישי / ת"ז / מייל לא שייכים לחייל אחר."""
+    body.email = _clean(body.email)
+    body.personalNumber = _clean(body.personalNumber)
+    body.idNumber = _clean(body.idNumber)
+    for field, value, label in (
+        (models.Soldier.personalNumber, body.personalNumber, "מספר אישי"),
+        (models.Soldier.idNumber, body.idNumber, "תעודת זהות"),
+        (models.Soldier.email, body.email, "מייל"),
+    ):
+        if value is None:
+            continue
+        q = db.query(models.Soldier).filter(field == value)
+        if soldier_id:
+            q = q.filter(models.Soldier.id != soldier_id)
+        if q.first():
+            raise HTTPException(status_code=409, detail=f"{label} זה כבר רשום לחייל אחר")
+
+
 @router.get("/public")
 def get_soldiers_public(db: Session = Depends(get_db)):
     """ללא אימות — מחזיר רק שדות בסיסיים לדף הכניסה."""
@@ -45,6 +72,7 @@ def get_soldiers(db: Session = Depends(get_db), actor: models.Soldier = Depends(
 
 @router.post("", response_model=schemas.SoldierOut)
 def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    _normalize_and_check(body, db)
     soldier = models.Soldier(
         id=str(uuid.uuid4()),
         firstName=body.firstName, lastName=body.lastName,
@@ -74,6 +102,7 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
     soldier = db.query(models.Soldier).filter(models.Soldier.id == soldier_id).first()
     if not soldier:
         raise HTTPException(status_code=404, detail="חייל לא נמצא")
+    _normalize_and_check(body, db, soldier_id)
     for field in ["firstName", "lastName", "phone", "role", "rank", "isActive",
                   "sectionId", "personalNumber", "idNumber", "address", "birthDate",
                   "permissionLevel", "email"]:
@@ -86,8 +115,15 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
     for perm in body.extraPermissions:
         db.add(models.SoldierExtraPermission(id=str(uuid.uuid4()), soldier_id=soldier.id, permission=perm))
     user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
-    if user:
-        user.email = body.email
+    if user and body.email and user.email != body.email:
+        # מייל של חשבון אחר שלא מקושר לאף חייל (ניסיון Google ישן) — משחררים אותו
+        other = db.query(models.User).filter(models.User.email == body.email, models.User.id != user.id).first()
+        if other and other.soldier_id is None:
+            db.delete(other)
+            db.flush()
+            other = None
+        if other is None:
+            user.email = body.email
     db.commit()
     db.refresh(soldier)
     return soldier_to_out(soldier)

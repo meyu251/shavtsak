@@ -89,8 +89,9 @@ export async function claimSoldier(
   userId: string,
   personalNumber?: string,
   idNumber?: string,
+  password?: string,
 ): Promise<{ access_token: string; soldier: Soldier }> {
-  return req("POST", "/auth/claim", { userId, personalNumber, idNumber });
+  return req("POST", "/auth/claim", { userId, personalNumber, idNumber, password });
 }
 
 /** רשימה מינימלית ללא אימות — לדף הכניסה בלבד */

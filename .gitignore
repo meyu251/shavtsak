@@ -47,3 +47,6 @@ yarn-error.log*
 
 run-shavtsak.txt
 shavtsak.code-workspace
+# נתוני יחידה אמיתיים — לא לשמור בריפו
+*.xlsx
+*.xls
