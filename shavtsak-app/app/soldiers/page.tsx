@@ -491,7 +491,7 @@ export default function SoldiersPage() {
                     const sec = sections.find(s => s.id === itemId);
                     if (!sec) return null;
                     const companyName = sec.companyId ? companies.find(c => c.id === sec.companyId)?.name : undefined;
-                    const label = companyName ? `${sec.name} (${companyName})` : sec.name;
+                    const label = sec.name;
                     return (
                       <SortableSectionItem key={sec.id} itemId={sec.id} label={label}
                         count={soldiers.filter(s => s.sectionId === sec.id).length}
