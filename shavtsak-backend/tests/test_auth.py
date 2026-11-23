@@ -1,7 +1,7 @@
 """User stories: logging in, registering, Google linking, password reset, dev tools."""
 import app.routers.auth as auth_router
 from tests.conftest import (COMPANY_CMDR, SECTION1_CMDR, SOLDIER_S1, INDEPENDENT_CMDR,
-                            PASSWORD, soldier_payload, TASK, Api)
+                            PASSWORD, soldier_payload, TASK, Api, JOIN_CODE)
 
 
 def test_every_demo_user_can_log_in(login):
@@ -137,3 +137,50 @@ def test_impersonation_is_developer_only(login, client):
     assert r.status_code == 200
     as_soldier = Api(client, r.json()["access_token"])
     assert as_soldier.get("/auth/me").json()["id"] == "5"
+
+
+# ── New-user journeys ────────────────────────────────────────────────────────
+
+def bootstrap_body(personal_number, unit_type="section", **extra):
+    return {"firstName": "חדש", "lastName": personal_number, "rank": "סמל",
+            "personalNumber": personal_number, "password": PASSWORD,
+            "unitName": f"יחידה {personal_number}", "unitType": unit_type, **extra}
+
+
+def test_new_section_joins_existing_company_with_code(client, login):
+    r = client.post("/auth/bootstrap", json=bootstrap_body("8100001", joinCode=JOIN_CODE.lower()))
+    assert r.status_code == 200, r.text
+    new = Api(client, r.json()["access_token"])
+    me = new.get("/auth/me").json()
+    assert me["permissionLevel"] == "section_commander" and me["unitIsAuto"] is False
+    # מפקד הפלוגה רואה את המפקד החדש ואת המחלקה שלו
+    cmdr = login(COMPANY_CMDR)
+    assert any(s["personalNumber"] == "8100001" for s in cmdr.get("/soldiers").json())
+    # מפקד מחלקה בפלוגה אמיתית לא מנהל משימות לבד
+    assert new.post("/tasks", json=TASK).status_code == 403
+
+
+def test_bootstrap_with_wrong_or_misused_join_code(client):
+    assert client.post("/auth/bootstrap", json=bootstrap_body("8100002", joinCode="NOPE1234")).status_code == 404
+    assert client.post("/auth/bootstrap", json=bootstrap_body("8100003", "company", joinCode=JOIN_CODE)).status_code == 400
+    # שום דבר לא נוצר בניסיון שנכשל
+    assert client.post("/auth/bootstrap", json=bootstrap_body("8100002")).status_code == 200
+
+
+def test_google_user_creates_unit_and_google_login_works_after(monkeypatch, client):
+    fake_google(monkeypatch, "founder@gmail.com", "g-founder")
+    user_id = google_login(client).split("userId=")[1]
+    r = client.post("/auth/bootstrap", json=bootstrap_body("8100004", "company", googleUserId=user_id))
+    assert r.status_code == 200, r.text
+    assert "token=" in google_login(client)  # לא נתקע שוב במסך הקישור
+    assert client.post("/auth/password/login", json={"identifier": "8100004", "password": PASSWORD}).status_code == 200
+    # אי אפשר להשתמש באותו משתמש Google פעמיים
+    assert client.post("/auth/bootstrap", json=bootstrap_body("8100005", googleUserId=user_id)).status_code == 400
+
+
+def test_google_login_auto_links_soldier_registered_with_that_email(monkeypatch, client, login):
+    cmdr = login(COMPANY_CMDR)
+    r = cmdr.post("/soldiers", json=soldier_payload(personalNumber="7100002", email="pre@gmail.com"))
+    assert r.status_code == 200, r.text
+    fake_google(monkeypatch, "pre@gmail.com", "g-pre")
+    assert "token=" in google_login(client)

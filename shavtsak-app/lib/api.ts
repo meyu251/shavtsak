@@ -234,6 +234,8 @@ export async function bootstrapUnit(data: {
   password: string;
   unitName: string;
   unitType: "section" | "company";
+  joinCode?: string;
+  googleUserId?: string;
 }): Promise<{ access_token: string; soldier: Soldier }> {
   return req("POST", "/auth/bootstrap", data);
 }

@@ -397,6 +397,17 @@ async def google_callback(
         soldier_by_email = db.query(models.Soldier).filter(models.Soldier.email == email).first()
         if soldier_by_email:
             user = db.query(models.User).filter(models.User.soldier_id == soldier_by_email.id).first()
+            if not user:
+                # המפקד רשם את החייל עם המייל הזה וזו כניסה ראשונה — מקשרים אוטומטית
+                user = models.User(
+                    id=str(uuid.uuid4()),
+                    email=email,
+                    google_sub=google_sub,
+                    soldier_id=soldier_by_email.id,
+                )
+                db.add(user)
+                db.commit()
+                db.refresh(user)
 
     if not user:
         # יצירת User חדש — עדיין לא מקושר לחייל
@@ -456,17 +467,37 @@ def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
         if existing:
             raise HTTPException(status_code=409, detail="מספר זה כבר רשום במערכת")
 
+    # משתמש Google שעוד לא מקושר לחייל — החשבון שלו יקושר למפקד החדש
+    google_user = None
+    if body.googleUserId:
+        google_user = db.query(models.User).filter(models.User.id == body.googleUserId).first()
+        if not google_user or google_user.soldier_id:
+            raise HTTPException(status_code=400, detail="חשבון Google לא תקין — התחבר מחדש")
+
+    # מחלקה חדשה שמצטרפת מיד לפלוגה קיימת עם קוד הצטרפות
+    join_company = None
+    join_code = (body.joinCode or "").strip().upper()
+    if join_code:
+        if body.unitType != "section":
+            raise HTTPException(status_code=400, detail="קוד הצטרפות מתאים רק להקמת מחלקה")
+        join_company = db.query(models.Company).filter(
+            models.Company.join_code == join_code,
+            models.Company.is_auto == False,  # noqa: E712
+        ).first()
+        if not join_company:
+            raise HTTPException(status_code=404, detail="קוד ההצטרפות לא נמצא — בדוק אותו מול מפקד הפלוגה")
+
     section_id = None
     company_id = None
-    auto_company = None
+    section_company = None
 
     if body.unitType == "section":
         # מחלקה עצמאית מקבלת פלוגה אוטומטית פרטית משלה (לא משותפת עם אף מחלקה אחרת)
-        auto_company = create_auto_company(body.unitName.strip(), db)
+        section_company = join_company or create_auto_company(body.unitName.strip(), db)
         section = models.Section(
             id=str(uuid.uuid4()),
             name=body.unitName.strip(),
-            company_id=auto_company.id,
+            company_id=section_company.id,
         )
         db.add(section)
         db.flush()
@@ -492,7 +523,7 @@ def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
         isActive=True,
         sectionId=section_id,
         managed_company_id=company_id,
-        company_id=company_id or auto_company.id,
+        company_id=company_id or section_company.id,
         personalNumber=body.personalNumber.strip() if body.personalNumber else None,
         idNumber=body.idNumber.strip() if body.idNumber else None,
         permissionLevel=permission_level,
@@ -500,12 +531,15 @@ def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
     db.add(soldier)
     db.flush()
 
-    user = models.User(
-        id=str(uuid.uuid4()),
-        soldier_id=soldier.id,
-        password_hash=pwd_context.hash(body.password),
-    )
-    db.add(user)
+    if google_user:
+        google_user.soldier_id = soldier.id
+        google_user.password_hash = pwd_context.hash(body.password)
+    else:
+        db.add(models.User(
+            id=str(uuid.uuid4()),
+            soldier_id=soldier.id,
+            password_hash=pwd_context.hash(body.password),
+        ))
     db.commit()
 
     token = create_token(soldier.id)

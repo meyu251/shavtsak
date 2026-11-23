@@ -134,7 +134,7 @@ function RegisterForm({ onSuccess, onBack }: {
       if (msg.includes("כבר קיים")) {
         setLocalError("חשבון כבר קיים — עבור לכניסה או השתמש ב\"שכחתי סיסמא\"");
       } else if (msg.includes("לא נמצא")) {
-        setLocalError("לא נמצא חייל עם המספר שהוזן. בדוק שוב או פנה למפקד.");
+        setLocalError("המספר לא רשום במערכת. בקש מהמפקד להוסיף אותך עם המספר האישי שלך, ואז נסה שוב.");
       } else {
         setLocalError(msg);
       }
@@ -463,14 +463,14 @@ function RegisterChoiceScreen({ onExisting, onNew, onBack }: {
         className="w-full border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl p-4 text-right transition-colors cursor-pointer"
       >
         <div className="font-semibold text-gray-800 mb-1">הצטרף למסגרת קיימת</div>
-        <div className="text-xs text-gray-500">אני כבר רשום במערכת — אצור סיסמא לחשבון שלי</div>
+        <div className="text-xs text-gray-500">המפקד כבר הוסיף אותי למערכת. אזין את המספר האישי שלי ואבחר סיסמא</div>
       </button>
       <button
         onClick={onNew}
         className="w-full border-2 border-green-200 hover:border-green-400 hover:bg-green-50 rounded-xl p-4 text-right transition-colors cursor-pointer"
       >
         <div className="font-semibold text-gray-800 mb-1">צור מסגרת חדשה</div>
-        <div className="text-xs text-gray-500">אני מפקד שמקים יחידה חדשה — אפתח חשבון ומסגרת</div>
+        <div className="text-xs text-gray-500">אני מפקד שמקים מחלקה או פלוגה חדשה</div>
       </button>
       <button onClick={onBack}
         className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors cursor-pointer">
@@ -489,9 +489,10 @@ const COMMANDER_RANKS = [
   'סגן', 'סרן', 'רב סרן (רס"ן)', 'סגן אלוף (סא"ל)',
 ];
 
-function CreateUnitForm({ onSuccess, onBack }: {
+function CreateUnitForm({ onSuccess, onBack, googleUserId }: {
   onSuccess: (token: string, soldier: Soldier) => void;
   onBack: () => void;
+  googleUserId?: string;
 }) {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
@@ -501,6 +502,7 @@ function CreateUnitForm({ onSuccess, onBack }: {
   const [phone, setPhone] = React.useState("");
   const [unitName, setUnitName] = React.useState("");
   const [unitType, setUnitType] = React.useState<"section" | "company">("section");
+  const [joinCode, setJoinCode] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [showPw, setShowPw] = React.useState(false);
@@ -527,6 +529,8 @@ function CreateUnitForm({ onSuccess, onBack }: {
         password,
         unitName: unitName.trim(),
         unitType,
+        joinCode: unitType === "section" && joinCode.trim() ? joinCode.trim() : undefined,
+        googleUserId,
       });
       onSuccess(access_token, { ...soldier, hasPassword: true });
     } catch (e: unknown) {
@@ -580,7 +584,7 @@ function CreateUnitForm({ onSuccess, onBack }: {
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">שם המסגרת</label>
         <input type="text" value={unitName} onChange={e => setUnitName(e.target.value)}
-          placeholder='לדוגמה: מחלקה א׳' className={inputCls} />
+          placeholder={unitType === "section" ? "לדוגמה: מחלקה א׳" : "לדוגמה: פלוגה ב׳"} className={inputCls} />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">סוג מסגרת</label>
@@ -596,7 +600,21 @@ function CreateUnitForm({ onSuccess, onBack }: {
             </button>
           ))}
         </div>
+        <p className="text-xs text-gray-400 mt-1">
+          {unitType === "section"
+            ? "תהיה מפקד המחלקה. המחלקה יכולה לעבוד לבד או להצטרף לפלוגה קיימת."
+            : "תהיה מפקד הפלוגה. אחרי הכניסה תקבל קוד שמחלקות יכולות להצטרף איתו."}
+        </p>
       </div>
+      {unitType === "section" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">קוד הצטרפות לפלוגה (אופציונלי)</label>
+          <input type="text" dir="ltr" value={joinCode}
+            onChange={e => setJoinCode(e.target.value.toUpperCase())}
+            placeholder="מקבלים ממפקד הפלוגה" className={inputCls} />
+          <p className="text-xs text-gray-400 mt-1">בלי קוד המחלקה תעבוד לבד. אפשר להצטרף לפלוגה גם מאוחר יותר.</p>
+        </div>
+      )}
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא</label>
         <div className="relative">
@@ -753,7 +771,7 @@ function LoginPageInner() {
         userId={state.claimUserId}
         onSuccess={(token, soldier) => handleLoginSuccess(token, soldier)}
         onError={msg => setState({ mode: "error", errorMessage: msg })}
-        onCreateUnit={() => setState({ mode: "create-unit" })}
+        onCreateUnit={() => setState({ mode: "create-unit", claimUserId: state.claimUserId })}
       />
     );
   }
@@ -801,7 +819,10 @@ function LoginPageInner() {
     return wrapper("צור מסגרת חדשה",
       <CreateUnitForm
         onSuccess={handleLoginSuccess}
-        onBack={() => setState({ mode: "register-choice" })}
+        googleUserId={state.claimUserId}
+        onBack={() => setState(state.claimUserId
+          ? { mode: "claim", claimUserId: state.claimUserId }
+          : { mode: "register-choice" })}
       />
     );
   }

@@ -217,3 +217,5 @@ class BootstrapIn(BaseModel):
     password: str
     unitName: str
     unitType: str  # "section" | "company"
+    joinCode: Optional[str] = None      # מחלקה שמצטרפת מיד לפלוגה קיימת
+    googleUserId: Optional[str] = None  # מקשר משתמש Google שעוד לא שויך
