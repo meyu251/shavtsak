@@ -55,6 +55,11 @@ All demo users log in on the regular login screen with password `123456`:
 
 The DEV button (top of every inner page, for 1000001) lets you switch to any user without logging out.
 
+### Windows shortcuts
+
+- `update.bat` — after every update: git pull, backend packages, database migrations, optional demo reset (asks first), frontend build.
+- `start.bat` — opens the backend and the frontend in two windows and opens http://localhost:3000.
+
 Join code of פלוגה א: `DEMO2026`. Log in as 1000009 (independent section), open "ניהול כוח אדם" and enter it to join the company.
 
 Soldier signup codes: `SOLD2026` (פלוגה א) and `SOLD2027` (the independent section). A soldier the commander already added signs up with their personal number plus this code, then lands on the profile page to fill in missing details.
