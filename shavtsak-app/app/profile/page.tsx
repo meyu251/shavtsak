@@ -1,21 +1,42 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Soldier } from "@/lib/types";
 import * as api from "@/lib/api";
 import { fullName, PERMISSION_LEVEL_LABELS } from "@/lib/permissions";
 import { useAuth } from "@/lib/useAuth";
 import AppHeader from "@/components/AppHeader";
 import { showToast } from "@/components/Toast";
+import { missingProfileFields } from "@/lib/profile";
+
 
 export default function ProfilePage() {
+  return (
+    <Suspense fallback={null}>
+      <ProfileInner />
+    </Suspense>
+  );
+}
+
+function ProfileInner() {
   const { currentUser, logout } = useAuth();
   const [soldier, setSoldier] = useState<Soldier | null>(null);
   const [sectionName, setSectionName] = useState('');
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // כניסה ראשונה (/profile?welcome=1) או תזכורת (/profile?complete=1) — פותחים ישר את טופס העריכה
+  const query = useSearchParams();
+  const welcome = !!(query.get('welcome') || query.get('complete'));
+  const firstLogin = !!query.get('welcome');
+  const [editing, setEditing] = useState(welcome);
+  // מעבר בין ?welcome ל-?complete בלי טעינה מחדש של הדף
+  const [prevWelcome, setPrevWelcome] = useState(welcome);
+  if (prevWelcome !== welcome) {
+    setPrevWelcome(welcome);
+    if (welcome) setEditing(true);
+  }
   const [form, setForm] = useState({
-    firstName: '', lastName: '', phone: '',
+    firstName: '', lastName: '', phone: '', email: '',
     address: '', birthDate: '', idNumber: '', personalNumber: '',
   });
 
@@ -29,7 +50,7 @@ export default function ProfilePage() {
         const sec = sections.find(x => x.id === s.sectionId);
         setSectionName(sec?.name ?? '');
         setForm({
-          firstName: s.firstName, lastName: s.lastName, phone: s.phone,
+          firstName: s.firstName, lastName: s.lastName, phone: s.phone, email: s.email ?? '',
           address: s.address ?? '', birthDate: s.birthDate ?? '',
           idNumber: s.idNumber ?? '', personalNumber: s.personalNumber ?? '',
         });
@@ -46,8 +67,10 @@ export default function ProfilePage() {
       setSoldier(updated);
       setEditing(false);
       showToast('הפרטים נשמרו בהצלחה', 'success');
-    } catch {
-      showToast('שגיאה בשמירת הפרטים');
+      if (welcome) window.location.href = '/';
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      showToast(msg && msg.includes('כבר') ? msg : 'שגיאה בשמירת הפרטים');
     } finally {
       setSaving(false);
     }
@@ -85,6 +108,18 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {welcome && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900">
+            {firstLogin && <div className="font-semibold mb-1">ברוך הבא! 👋</div>}
+            השלם את הפרטים שלך כדי שהמפקד יוכל ליצור איתך קשר. השדות המסומנים חסרים.
+          </div>
+        )}
+        {!welcome && !editing && missingProfileFields(soldier).length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900">
+            חסרים פרטים: {missingProfileFields(soldier).join(', ')}
+          </div>
+        )}
+
         {/* Read-only fields: role + section */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100">
           <ReadRow label="תפקיד" value={soldier.role} />
@@ -116,7 +151,14 @@ export default function ProfilePage() {
               <input
                 type="tel" value={form.phone} dir="ltr"
                 onChange={e => setForm({ ...form, phone: e.target.value })}
-                className={inputCls} placeholder="050-0000000"
+                className={missingCls(form.phone)} placeholder="050-0000000"
+              />
+            </Field>
+            <Field label="מייל">
+              <input
+                type="email" value={form.email} dir="ltr"
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                className={missingCls(form.email)} placeholder="example@gmail.com"
               />
             </Field>
             <Field label="מספר אישי">
@@ -130,21 +172,21 @@ export default function ProfilePage() {
               <input
                 type="text" value={form.idNumber} dir="ltr"
                 onChange={e => setForm({ ...form, idNumber: e.target.value })}
-                className={inputCls} placeholder="000000000"
+                className={missingCls(form.idNumber)} placeholder="000000000"
               />
             </Field>
             <Field label="תאריך לידה">
               <input
                 type="date" value={form.birthDate} dir="ltr"
                 onChange={e => setForm({ ...form, birthDate: e.target.value })}
-                className={inputCls}
+                className={missingCls(form.birthDate)}
               />
             </Field>
             <Field label="כתובת">
               <input
                 type="text" value={form.address}
                 onChange={e => setForm({ ...form, address: e.target.value })}
-                className={inputCls} placeholder="רחוב, עיר"
+                className={missingCls(form.address)} placeholder="רחוב, עיר"
               />
             </Field>
             <div className="flex gap-3 pt-1">
@@ -152,9 +194,9 @@ export default function ProfilePage() {
                 className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white py-2 rounded-lg font-medium transition-colors">
                 {saving ? 'שומר...' : 'שמור'}
               </button>
-              <button type="button" onClick={() => setEditing(false)}
+              <button type="button" onClick={() => { if (welcome) { window.location.href = '/'; } else { setEditing(false); } }}
                 className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg font-medium">
-                ביטול
+                {welcome ? 'אחר כך' : 'ביטול'}
               </button>
             </div>
           </form>
@@ -165,6 +207,7 @@ export default function ProfilePage() {
             <ReadRow label="פלאפון" value={soldier.phone || '—'} ltr />
             <ReadRow label="מספר אישי" value={soldier.personalNumber || '—'} ltr />
             <ReadRow label="תעודת זהות" value={soldier.idNumber || '—'} ltr />
+            <ReadRow label="מייל" value={soldier.email || '—'} ltr />
             <ReadRow
               label="תאריך לידה"
               value={soldier.birthDate ? new Date(soldier.birthDate).toLocaleDateString('he-IL') : '—'}
@@ -206,3 +249,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400";
+const missingCls = (v: string) => v.trim() ? inputCls : inputCls.replace("border-gray-300", "border-amber-400 bg-amber-50");

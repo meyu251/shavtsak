@@ -35,6 +35,8 @@ class Company(Base):
     is_auto = Column(Boolean, default=False, nullable=False)
     # קוד שמפקד הפלוגה מעביר למפקד מחלקה עצמאית כדי שיצטרף לפלוגה
     join_code = Column(String, nullable=True, unique=True, default=new_join_code)
+    # קוד שהמפקד שולח לכל החיילים — נדרש בהרשמה כדי לחבר חשבון לחייל שהמפקד כבר רשם
+    signup_code = Column(String, nullable=True, unique=True, default=new_join_code)
 
     sections = relationship("Section", back_populates="company")
 

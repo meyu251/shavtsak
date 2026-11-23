@@ -1,7 +1,8 @@
 """User stories: logging in, registering, Google linking, password reset, dev tools."""
 import app.routers.auth as auth_router
 from tests.conftest import (COMPANY_CMDR, SECTION1_CMDR, SOLDIER_S1, INDEPENDENT_CMDR,
-                            PASSWORD, soldier_payload, TASK, Api, JOIN_CODE)
+                            PASSWORD, soldier_payload, TASK, Api, JOIN_CODE,
+                            SIGNUP_CODE, INDEPENDENT_SIGNUP_CODE)
 
 
 def test_every_demo_user_can_log_in(login):
@@ -17,9 +18,9 @@ def test_wrong_password_and_unknown_user_are_rejected(anon):
 def test_soldier_added_by_commander_registers_once(login, anon):
     cmdr = login(COMPANY_CMDR)
     assert cmdr.post("/soldiers", json=soldier_payload(personalNumber="7000001")).status_code == 200
-    r = anon.post("/auth/register", json={"identifier": "7000001", "password": "abcdef"})
+    r = anon.post("/auth/register", json={"identifier": "7000001", "password": "abcdef", "code": SIGNUP_CODE.lower()})
     assert r.status_code == 200
-    assert anon.post("/auth/register", json={"identifier": "7000001", "password": "abcdef"}).status_code == 409
+    assert anon.post("/auth/register", json={"identifier": "7000001", "password": "abcdef", "code": SIGNUP_CODE}).status_code == 409
     login("7000001", "abcdef")
 
 
@@ -83,6 +84,8 @@ def test_google_user_links_to_soldier_without_account(monkeypatch, client, login
     assert "step=claim" in loc
     user_id = loc.split("userId=")[1]
     r = client.post("/auth/claim", json={"userId": user_id, "personalNumber": "7100001"})
+    assert r.status_code == 403  # בלי קוד היחידה
+    r = client.post("/auth/claim", json={"userId": user_id, "personalNumber": "7100001", "code": SIGNUP_CODE})
     assert r.status_code == 200
     assert "token=" in google_login(client)
 
@@ -184,3 +187,58 @@ def test_google_login_auto_links_soldier_registered_with_that_email(monkeypatch,
     assert r.status_code == 200, r.text
     fake_google(monkeypatch, "pre@gmail.com", "g-pre")
     assert "token=" in google_login(client)
+
+
+
+# ── Signup code ───────────────────────────────────────────────────────────────
+
+def test_register_requires_the_units_signup_code(login, anon):
+    cmdr = login(COMPANY_CMDR)
+    cmdr.post("/soldiers", json=soldier_payload(personalNumber="7200001"))
+    body = {"identifier": "7200001", "password": "abcdef"}
+    assert anon.post("/auth/register", json=body).status_code == 403
+    assert anon.post("/auth/register", json={**body, "code": "WRONG123"}).status_code == 403
+    # קוד של יחידה אחרת לא עובד
+    assert anon.post("/auth/register", json={**body, "code": INDEPENDENT_SIGNUP_CODE}).status_code == 403
+    # קוד הצטרפות המחלקות הוא לא קוד החיילים
+    assert anon.post("/auth/register", json={**body, "code": JOIN_CODE}).status_code == 403
+    assert anon.post("/auth/register", json={**body, "code": SIGNUP_CODE}).status_code == 200
+
+
+def test_who_sees_which_code(login):
+    cc = login(COMPANY_CMDR).get("/companies/my-codes").json()
+    assert cc == {"signupCode": SIGNUP_CODE, "joinCode": JOIN_CODE}
+    sc = login(SECTION1_CMDR).get("/companies/my-codes").json()
+    assert sc == {"signupCode": SIGNUP_CODE, "joinCode": None}
+    ind = login(INDEPENDENT_CMDR).get("/companies/my-codes").json()
+    assert ind == {"signupCode": INDEPENDENT_SIGNUP_CODE, "joinCode": None}
+    soldier = login(SOLDIER_S1).get("/companies/my-codes").json()
+    assert soldier == {"signupCode": None, "joinCode": None}
+
+
+def test_rotating_codes(login, anon):
+    cmdr = login(COMPANY_CMDR)
+    assert login(SECTION1_CMDR).post("/companies/my-codes/rotate", json={"kind": "signup"}).status_code == 403
+    assert login(SOLDIER_S1).post("/companies/my-codes/rotate", json={"kind": "signup"}).status_code == 403
+    new = cmdr.post("/companies/my-codes/rotate", json={"kind": "signup"}).json()
+    assert new["signupCode"] != SIGNUP_CODE and new["joinCode"] == JOIN_CODE
+    cmdr.post("/soldiers", json=soldier_payload(personalNumber="7200002"))
+    body = {"identifier": "7200002", "password": "abcdef"}
+    assert anon.post("/auth/register", json={**body, "code": SIGNUP_CODE}).status_code == 403
+    assert anon.post("/auth/register", json={**body, "code": new["signupCode"]}).status_code == 200
+    joined = cmdr.post("/companies/my-codes/rotate", json={"kind": "join"}).json()
+    assert joined["joinCode"] != JOIN_CODE
+    # מפקדת מחלקה עצמאית מחליפה את קוד החיילים שלה, אבל אין לה קוד הצטרפות
+    ind = login(INDEPENDENT_CMDR)
+    assert ind.post("/companies/my-codes/rotate", json={"kind": "signup"}).json()["signupCode"] != INDEPENDENT_SIGNUP_CODE
+    assert ind.post("/companies/my-codes/rotate", json={"kind": "join"}).status_code == 400
+
+
+def test_soldiers_of_independent_section_use_company_code_after_joining(login, anon):
+    ind = login(INDEPENDENT_CMDR)
+    ind.post("/soldiers", json=soldier_payload(personalNumber="7200003"))
+    me = ind.get("/auth/me").json()
+    assert ind.post(f"/sections/{me['sectionId']}/join", json={"code": JOIN_CODE}).status_code == 200
+    body = {"identifier": "7200003", "password": "abcdef"}
+    assert anon.post("/auth/register", json={**body, "code": INDEPENDENT_SIGNUP_CODE}).status_code == 403
+    assert anon.post("/auth/register", json={**body, "code": SIGNUP_CODE}).status_code == 200

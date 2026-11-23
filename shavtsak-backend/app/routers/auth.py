@@ -11,7 +11,7 @@ from passlib.context import CryptContext
 from app.database import get_db
 from app import models, schemas
 from app.auth import create_token, get_current_soldier
-from app.isolation import create_auto_company
+from app.isolation import create_auto_company, get_actor_company_id
 import uuid
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -71,6 +71,18 @@ def _find_soldier_by_identifier(identifier: str, db: Session):
     return None
 
 
+def _check_signup_code(soldier: models.Soldier, code: str | None, db: Session):
+    """
+    הרשמה ראשונה דורשת את קוד החיילים של הפלוגה (או של המחלקה העצמאית).
+    בלי זה, כל מי שיודע מספר אישי של חייל שעוד לא נרשם היה יכול להירשם בשמו.
+    """
+    company_id = get_actor_company_id(soldier, db)
+    company = db.query(models.Company).filter(models.Company.id == company_id).first() if company_id else None
+    expected = (company.signup_code or "").upper() if company else ""
+    if not expected or (code or "").strip().upper() != expected:
+        raise HTTPException(status_code=403, detail="קוד היחידה שגוי — בקש אותו מהמפקד")
+
+
 @router.post("/register", response_model=schemas.TokenOut)
 def register(body: schemas.RegisterRequest, db: Session = Depends(get_db)):
     """First-time registration: find soldier by identifier, create User + set password."""
@@ -84,6 +96,8 @@ def register(body: schemas.RegisterRequest, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.soldier_id == soldier.id).first()
     if user and user.password_hash:
         raise HTTPException(status_code=409, detail="חשבון כבר קיים — התחבר עם סיסמא או Google")
+
+    _check_signup_code(soldier, body.code, db)
 
     if not user:
         user = models.User(
@@ -314,6 +328,7 @@ def claim_soldier(body: schemas.ClaimRequest, db: Session = Depends(get_db)):
         token = create_token(soldier.id)
         return schemas.TokenOut(access_token=token, soldier=soldier_to_out(soldier))
 
+    _check_signup_code(soldier, body.code, db)
     user.soldier_id = soldier.id
     db.commit()
 

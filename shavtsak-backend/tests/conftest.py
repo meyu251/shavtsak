@@ -124,6 +124,8 @@ SOLDIER_S1 = "1000005"        # יגאל — חייל במחלקה 1 (id 5)
 SOLDIER_S2 = "1000006"        # אסף — חייל במחלקה 2 (id 6)
 INDEPENDENT_CMDR = "1000009"  # דנה — מפקדת מחלקה עצמאית (id 9)
 JOIN_CODE = "DEMO2026"
+SIGNUP_CODE = "SOLD2026"       # קוד חיילים של פלוגה א
+INDEPENDENT_SIGNUP_CODE = "SOLD2027"
 
 
 def soldier_payload(**overrides):

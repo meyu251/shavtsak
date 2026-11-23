@@ -22,9 +22,9 @@ if db.query(models.Soldier).count() > 0:
     exit()
 
 # ── פלוגות ומחלקות ───────────────────────────────────────────────────────────
-company = models.Company(id="company1", name="פלוגה א", join_code="DEMO2026")
+company = models.Company(id="company1", name="פלוגה א", join_code="DEMO2026", signup_code="SOLD2026")
 # יחידה נפרדת לגמרי — לבדיקה שהנתונים לא מתערבבים בין יחידות
-auto_company = models.Company(id="company_auto1", name="מחלקה עצמאית", is_auto=True)
+auto_company = models.Company(id="company_auto1", name="מחלקה עצמאית", is_auto=True, signup_code="SOLD2027")
 db.add_all([company, auto_company])
 db.flush()
 section1 = models.Section(id="section1", name="מחלקה 1", company_id="company1")
@@ -92,7 +92,8 @@ db.close()
 
 print("✅ בסיס הנתונים אוכלס בהצלחה!")
 print()
-print("קוד הצטרפות לפלוגה א (למחלקה עצמאית): DEMO2026")
+print("קוד הצטרפות מחלקות לפלוגה א: DEMO2026")
+print("קוד הרשמת חיילים: פלוגה א SOLD2026, מחלקה עצמאית SOLD2027")
 print(f"כניסה במסך הרגיל עם מספר אישי וסיסמא {DEMO_PASSWORD}:")
 for s in soldiers_data:
     print(f"  {s['personalNumber']}  {s['firstName']} {s['lastName']} ({s['role']})")

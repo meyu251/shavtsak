@@ -119,6 +119,7 @@ export default function SoldiersPage() {
   const [menuOrder, setMenuOrder] = useState<string[]>(['all', 'none']);
   const [joinCode, setJoinCode] = useState('');
   const [joining, setJoining] = useState(false);
+  const [codes, setCodes] = useState<api.UnitCodes>({ signupCode: null, joinCode: null });
 
   const sectionSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -129,6 +130,7 @@ export default function SoldiersPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    api.getMyCodes().then(setCodes).catch(() => {});
     Promise.all([api.getSoldiers(), api.getSections(), api.getCompanies()])
       .then(([s, sec, comp]) => {
         setSoldiers(s);
@@ -282,6 +284,21 @@ export default function SoldiersPage() {
     }
   }
 
+  // ── Unit codes ─────────────────────────────────────────────────────────────
+  const canRotateCodes = viewer?.permissionLevel === 'company_commander'
+    || (viewer?.permissionLevel === 'section_commander' && !!viewer.unitIsAuto);
+
+  async function handleRotate(kind: 'signup' | 'join') {
+    const what = kind === 'signup' ? 'קוד החיילים' : 'קוד הצטרפות המחלקות';
+    if (!window.confirm(`להחליף את ${what}? הקוד הישן יפסיק לעבוד.`)) return;
+    try {
+      setCodes(await api.rotateCode(kind));
+      showToast('הקוד הוחלף', 'success');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'שגיאה בהחלפת הקוד');
+    }
+  }
+
   // ── Independent section joins a company ───────────────────────────────────
   async function handleJoinCompany(e: React.FormEvent) {
     e.preventDefault();
@@ -395,12 +412,33 @@ export default function SoldiersPage() {
         {/* ── Left Panel: Sections + Search ────────────────────────────────── */}
         <aside className={`w-72 flex-shrink-0 flex-col gap-3 ${selected || mobileShowList ? 'hidden md:flex' : 'flex'}`}>
 
-          {/* Company join code (company commander) */}
-          {viewer?.permissionLevel === 'company_commander' && companies[0]?.joinCode && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 text-sm">
-              <div className="font-medium text-gray-700">קוד הצטרפות לפלוגה</div>
-              <div dir="ltr" className="font-mono text-lg tracking-widest text-purple-700 my-1">{companies[0].joinCode}</div>
-              <div className="text-xs text-gray-500">מפקד מחלקה עצמאית מזין את הקוד כדי לצרף את המחלקה שלו לפלוגה.</div>
+          {/* Unit codes: soldiers' signup code (commanders) + section join code (company commander) */}
+          {(codes.signupCode || codes.joinCode) && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 text-sm space-y-3">
+              {codes.signupCode && (
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700">קוד חיילים</span>
+                    {canRotateCodes && (
+                      <button type="button" onClick={() => handleRotate('signup')}
+                        className="text-xs text-gray-400 hover:text-gray-700 cursor-pointer">החלף קוד</button>
+                    )}
+                  </div>
+                  <div dir="ltr" data-testid="signup-code" className="font-mono text-lg tracking-widest text-blue-700 my-1">{codes.signupCode}</div>
+                  <div className="text-xs text-gray-500">שלח לחיילים. בהרשמה הם מזינים מספר אישי ואת הקוד. רק מי שכבר הוספת יכול להירשם.</div>
+                </div>
+              )}
+              {codes.joinCode && (
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700">קוד הצטרפות מחלקות</span>
+                    <button type="button" onClick={() => handleRotate('join')}
+                      className="text-xs text-gray-400 hover:text-gray-700 cursor-pointer">החלף קוד</button>
+                  </div>
+                  <div dir="ltr" data-testid="join-code" className="font-mono text-lg tracking-widest text-purple-700 my-1">{codes.joinCode}</div>
+                  <div className="text-xs text-gray-500">רק למפקדי מחלקות: מצרף מחלקה עצמאית לפלוגה, והמפקד שלה מקבל ניהול על המחלקה. לא לשלוח לחיילים.</div>
+                </div>
+              )}
             </div>
           )}
 

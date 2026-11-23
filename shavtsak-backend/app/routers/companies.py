@@ -5,6 +5,7 @@ from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
 from app import permissions as perms
+from app.isolation import get_actor_company_id
 import uuid
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -16,6 +17,46 @@ def company_to_out(c: models.Company, actor: models.Soldier) -> schemas.CompanyO
     if actor.managed_company_id == c.id and perms.is_company_commander(actor):
         out.joinCode = c.join_code
     return out
+
+
+def _codes_company(actor: models.Soldier, db: Session):
+    company_id = get_actor_company_id(actor, db)
+    return db.query(models.Company).filter(models.Company.id == company_id).first() if company_id else None
+
+
+def _codes_out(actor: models.Soldier, company: models.Company | None) -> schemas.UnitCodesOut:
+    out = schemas.UnitCodesOut()
+    if not company:
+        return out
+    if perms.is_company_commander(actor) or perms.is_section_commander(actor) or "management" in perms.extras(actor):
+        out.signupCode = company.signup_code
+    if perms.is_company_commander(actor) and actor.managed_company_id == company.id and not company.is_auto:
+        out.joinCode = company.join_code
+    return out
+
+
+@router.get("/my-codes", response_model=schemas.UnitCodesOut)
+def my_codes(db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    """הקודים של היחידה שהמשתמש רשאי לראות: קוד חיילים וקוד הצטרפות מחלקות."""
+    return _codes_out(actor, _codes_company(actor, db))
+
+
+@router.post("/my-codes/rotate", response_model=schemas.UnitCodesOut)
+def rotate_code(body: schemas.RotateCodeRequest, db: Session = Depends(get_db), actor: models.Soldier = Depends(get_current_soldier)):
+    """החלפת קוד שדלף. רק מפקד הפלוגה (או מפקד מחלקה עצמאית לקוד החיילים שלה)."""
+    company = _codes_company(actor, db)
+    perms.require(company is not None, "אין יחידה")
+    owner = (perms.is_company_commander(actor) and actor.managed_company_id == company.id) \
+        or perms.leads_independent_section(actor)
+    perms.require(owner, "רק מפקד היחידה יכול להחליף קוד")
+    if body.kind == "signup":
+        company.signup_code = models.new_join_code()
+    elif body.kind == "join" and not company.is_auto:
+        company.join_code = models.new_join_code()
+    else:
+        raise HTTPException(status_code=400, detail="סוג קוד לא תקין")
+    db.commit()
+    return _codes_out(actor, company)
 
 
 @router.get("", response_model=List[schemas.CompanyOut])

@@ -114,6 +114,7 @@ function RegisterForm({ onSuccess, onBack }: {
   onBack: () => void;
 }) {
   const [identifier, setIdentifier] = useState("");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -127,7 +128,7 @@ function RegisterForm({ onSuccess, onBack }: {
     setSubmitting(true);
     setLocalError(null);
     try {
-      const { access_token, soldier } = await apiRegister(identifier.trim(), password);
+      const { access_token, soldier } = await apiRegister(identifier.trim(), password, code.trim());
       onSuccess(access_token, { ...soldier, hasPassword: true });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "שגיאה";
@@ -135,6 +136,8 @@ function RegisterForm({ onSuccess, onBack }: {
         setLocalError("חשבון כבר קיים — עבור לכניסה או השתמש ב\"שכחתי סיסמא\"");
       } else if (msg.includes("לא נמצא")) {
         setLocalError("המספר לא רשום במערכת. בקש מהמפקד להוסיף אותך עם המספר האישי שלך, ואז נסה שוב.");
+      } else if (msg.includes("קוד היחידה")) {
+        setLocalError("קוד היחידה שגוי. בקש מהמפקד את קוד החיילים של היחידה.");
       } else {
         setLocalError(msg);
       }
@@ -149,6 +152,12 @@ function RegisterForm({ onSuccess, onBack }: {
         <input type="text" dir="ltr" value={identifier}
           onChange={e => setIdentifier(e.target.value)}
           placeholder="1234567" className={inputCls} autoComplete="username" />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">קוד יחידה</label>
+        <input type="text" dir="ltr" value={code}
+          onChange={e => setCode(e.target.value.toUpperCase())}
+          placeholder="מקבלים מהמפקד" className={inputCls} autoComplete="off" />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא חדשה</label>
@@ -171,7 +180,7 @@ function RegisterForm({ onSuccess, onBack }: {
         </div>
       </div>
       {localError && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2 text-center">{localError}</p>}
-      <button type="submit" disabled={submitting || !identifier.trim() || !password || !confirm}
+      <button type="submit" disabled={submitting || !identifier.trim() || !code.trim() || !password || !confirm}
         className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-medium rounded-xl py-2.5 transition-colors cursor-pointer">
         {submitting ? "יוצר חשבון..." : "צור חשבון"}
       </button>
@@ -193,6 +202,7 @@ function ClaimForm({ userId, onSuccess, onError, onCreateUnit }: {
 }) {
   const [personalNumber, setPersonalNumber] = useState("");
   const [idNumber, setIdNumber] = useState("");
+  const [code, setCode] = useState("");
   // לחייל כבר יש חשבון עם סיסמא — מבקשים אותה כדי לחבר אליו את Google
   const [needsPassword, setNeedsPassword] = useState(false);
   const [password, setPassword] = useState("");
@@ -215,6 +225,7 @@ function ClaimForm({ userId, onSuccess, onError, onCreateUnit }: {
         personalNumber.trim() || undefined,
         idNumber.trim() || undefined,
         needsPassword ? password : undefined,
+        code.trim() || undefined,
       );
       onSuccess(access_token, soldier);
     } catch (e: unknown) {
@@ -224,6 +235,8 @@ function ClaimForm({ userId, onSuccess, onError, onCreateUnit }: {
         setLocalError("כבר יש לך חשבון עם סיסמא. הזן אותה כדי לחבר אליו את Google.");
       } else if (msg.includes("סיסמא שגויה")) {
         setLocalError("סיסמא שגויה.");
+      } else if (msg.includes("קוד היחידה")) {
+        setLocalError("קוד היחידה שגוי או חסר. בקש מהמפקד את קוד החיילים של היחידה.");
       } else if (msg.includes("כבר מקושר")) {
         setLocalError("המספר כבר מקושר למשתמש אחר — פנה למפקד.");
       } else if (msg.includes("לא נמצא")) {
@@ -258,6 +271,14 @@ function ClaimForm({ userId, onSuccess, onError, onCreateUnit }: {
           onChange={e => setIdNumber(e.target.value)}
           placeholder="לדוגמה: 123456789" className={inputCls} />
       </div>
+      {!needsPassword && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">קוד יחידה</label>
+          <input type="text" dir="ltr" value={code}
+            onChange={e => setCode(e.target.value.toUpperCase())}
+            placeholder="מקבלים מהמפקד" className={inputCls} autoComplete="off" />
+        </div>
+      )}
       {needsPassword && (
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">סיסמא</label>
@@ -663,6 +684,7 @@ interface PageState {
   pendingToken?: string;
   pendingSoldier?: Soldier;
   claimUserId?: string;
+  welcome?: boolean;  // כניסה ראשונה — אחרי הכניסה עוברים להשלמת פרטים
   errorMessage?: string;
 }
 
@@ -708,9 +730,9 @@ function LoginPageInner() {
     setState({ mode: "login" });
   }, [params, router]);
 
-  async function handleLoginSuccess(token: string, soldier: Soldier) {
+  async function handleLoginSuccess(token: string, soldier: Soldier, welcome = false) {
     if (!soldier.hasPassword) {
-      setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier });
+      setState({ mode: "set-password", pendingToken: token, pendingSoldier: soldier, welcome });
       return;
     }
     // תשובת הכניסה לא כוללת isDeveloper — משלימים מ-/auth/me כדי שפאנל ה-DEV יופיע
@@ -721,13 +743,13 @@ function LoginPageInner() {
       full = { ...soldier, ...me };
     } catch { /* ממשיכים עם מה שיש */ }
     saveSession(token, full);
-    router.replace("/");
+    router.replace(welcome ? "/profile?welcome=1" : "/");
   }
 
   function handleSetPasswordDone() {
     if (state.pendingSoldier) {
       // session already saved in SetPasswordForm before calling setPassword
-      router.replace("/");
+      router.replace(state.welcome ? "/profile?welcome=1" : "/");
     }
   }
 
@@ -769,7 +791,7 @@ function LoginPageInner() {
     return wrapper("קישור חשבון Google לחייל",
       <ClaimForm
         userId={state.claimUserId}
-        onSuccess={(token, soldier) => handleLoginSuccess(token, soldier)}
+        onSuccess={(token, soldier) => handleLoginSuccess(token, soldier, true)}
         onError={msg => setState({ mode: "error", errorMessage: msg })}
         onCreateUnit={() => setState({ mode: "create-unit", claimUserId: state.claimUserId })}
       />
@@ -789,7 +811,7 @@ function LoginPageInner() {
   if (state.mode === "register") {
     return wrapper("הרשמה",
       <RegisterForm
-        onSuccess={handleLoginSuccess}
+        onSuccess={(token, soldier) => handleLoginSuccess(token, soldier, true)}
         onBack={() => setState({ mode: "login" })}
       />
     );
@@ -818,7 +840,7 @@ function LoginPageInner() {
   if (state.mode === "create-unit") {
     return wrapper("צור מסגרת חדשה",
       <CreateUnitForm
-        onSuccess={handleLoginSuccess}
+        onSuccess={(token, soldier) => handleLoginSuccess(token, soldier, true)}
         googleUserId={state.claimUserId}
         onBack={() => setState(state.claimUserId
           ? { mode: "claim", claimUserId: state.claimUserId }

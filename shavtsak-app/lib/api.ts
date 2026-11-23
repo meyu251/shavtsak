@@ -67,8 +67,8 @@ export async function passwordLogin(identifier: string, password: string): Promi
 }
 
 /** רישום ראשוני — מציאת חייל לפי מספר אישי/ת"ז והגדרת סיסמא */
-export async function register(identifier: string, password: string): Promise<{ access_token: string; soldier: Soldier }> {
-  return req("POST", "/auth/register", { identifier, password });
+export async function register(identifier: string, password: string, code: string): Promise<{ access_token: string; soldier: Soldier }> {
+  return req("POST", "/auth/register", { identifier, password, code });
 }
 
 /** הגדרת סיסמא למשתמש המחובר */
@@ -96,8 +96,9 @@ export async function claimSoldier(
   personalNumber?: string,
   idNumber?: string,
   password?: string,
+  code?: string,
 ): Promise<{ access_token: string; soldier: Soldier }> {
-  return req("POST", "/auth/claim", { userId, personalNumber, idNumber, password });
+  return req("POST", "/auth/claim", { userId, personalNumber, idNumber, password, code });
 }
 
 /** רשימה מינימלית ללא אימות — לדף הכניסה בלבד */
@@ -147,6 +148,17 @@ export async function deleteSection(id: string): Promise<void> {
 }
 
 // ── Companies ─────────────────────────────────────────────────────────────────
+
+export type UnitCodes = { signupCode: string | null; joinCode: string | null };
+
+/** קוד החיילים וקוד הצטרפות המחלקות — רק מה שהמשתמש רשאי לראות */
+export async function getMyCodes(): Promise<UnitCodes> {
+  return req("GET", "/companies/my-codes");
+}
+
+export async function rotateCode(kind: "signup" | "join"): Promise<UnitCodes> {
+  return req("POST", "/companies/my-codes/rotate", { kind });
+}
 
 export async function getCompanies(): Promise<Company[]> {
   return req("GET", "/companies");

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { missingProfileFields } from "@/lib/profile";
 import { useAuth } from "@/lib/useAuth";
 import * as api from "@/lib/api";
 import { fullName, canAccessSoldierManagement, canAccessTaskManagement } from "@/lib/permissions";
@@ -22,6 +23,7 @@ const ALL_ITEMS = [
 export default function HomePage() {
   const { currentUser, logout } = useAuth();
   const [sectionName, setSectionName] = useState<string>('');
+  const [missing, setMissing] = useState<string[]>([]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -29,6 +31,8 @@ export default function HomePage() {
       const sec = sections.find(s => s.id === currentUser.sectionId);
       setSectionName(sec?.name ?? '');
     });
+    // תזכורת להשלים פרטים אישיים שהמפקד לא מילא
+    api.getMe().then(me => setMissing(missingProfileFields(me))).catch(() => {});
   }, [currentUser]);
 
   if (!currentUser) return null;
@@ -68,6 +72,15 @@ export default function HomePage() {
           {sectionName && ` · ${sectionName}`}
         </p>
       </div>
+
+      {missing.length > 0 && (
+        <div className="max-w-2xl mx-auto w-full px-4 pt-2">
+          <Link href="/profile?complete=1"
+            className="block bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-900 hover:bg-amber-100">
+            חסרים לך פרטים: {missing.join(', ')}. <span className="font-semibold underline">להשלמה</span>
+          </Link>
+        </div>
+      )}
 
       {/* Nav grid */}
       <main className="max-w-2xl mx-auto w-full px-4 py-4">

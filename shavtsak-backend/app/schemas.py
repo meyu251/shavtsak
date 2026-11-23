@@ -178,6 +178,7 @@ class ClaimRequest(BaseModel):
     personalNumber: Optional[str] = None
     idNumber: Optional[str] = None
     password: Optional[str] = None  # נדרש כשלחייל כבר יש חשבון עם סיסמא
+    code: Optional[str] = None      # קוד החיילים של היחידה — נדרש בקישור ראשון
 
 class SetPasswordRequest(BaseModel):
     password: str
@@ -205,6 +206,16 @@ class JoinCompanyRequest(BaseModel):
 class RegisterRequest(BaseModel):
     identifier: str  # personalNumber or idNumber
     password: str
+    code: Optional[str] = None  # קוד החיילים של היחידה
+
+
+class UnitCodesOut(BaseModel):
+    signupCode: Optional[str] = None  # קוד לחיילים (מפקד פלוגה ומפקדי מחלקות)
+    joinCode: Optional[str] = None    # קוד הצטרפות מחלקות (רק מפקד פלוגה אמיתית)
+
+
+class RotateCodeRequest(BaseModel):
+    kind: str  # "signup" | "join"
 
 
 class BootstrapIn(BaseModel):

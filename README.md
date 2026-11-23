@@ -57,6 +57,8 @@ The DEV button (top of every inner page, for 1000001) lets you switch to any use
 
 Join code of פלוגה א: `DEMO2026`. Log in as 1000009 (independent section), open "ניהול כוח אדם" and enter it to join the company.
 
+Soldier signup codes: `SOLD2026` (פלוגה א) and `SOLD2027` (the independent section). A soldier the commander already added signs up with their personal number plus this code, then lands on the profile page to fill in missing details.
+
 ## Tests
 
 The backend has user-story tests in `shavtsak-backend/tests` (login, Google linking, isolation between units,
