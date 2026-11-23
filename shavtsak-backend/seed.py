@@ -22,11 +22,11 @@ if "--reset" in sys.argv:
     for table in reversed(Base.metadata.sorted_tables):
         db.execute(table.delete())
     db.commit()
-    print("כל הנתונים נמחקו.")
+    print("All data deleted.")
 
 # ── בדיקה שה-DB לא מאוכלס כבר ──────────────────────────────────────────────
 if db.query(models.Soldier).count() > 0:
-    print("ה-DB כבר מאוכלס. לאיפוס: python seed.py --reset (מוחק הכול!)")
+    print("The database already has data. To reset: python seed.py --reset (deletes everything!)")
     db.close()
     exit()
 
@@ -99,10 +99,10 @@ db.add(models.TaskTemplate(id="6", name="שמירה במחלקה העצמאית"
 db.commit()
 db.close()
 
-print("✅ בסיס הנתונים אוכלס בהצלחה!")
+print("Demo data loaded.")
 print()
-print("קוד הצטרפות מחלקות לפלוגה א: DEMO2026")
-print("קוד הרשמת חיילים: פלוגה א SOLD2026, מחלקה עצמאית SOLD2027")
-print(f"כניסה במסך הרגיל עם מספר אישי וסיסמא {DEMO_PASSWORD}:")
+print("Section join code (company A): DEMO2026")
+print("Soldier signup codes: company A SOLD2026, independent section SOLD2027")
+print(f"Demo logins (personal number, password {DEMO_PASSWORD}):")
 for s in soldiers_data:
-    print(f"  {s['personalNumber']}  {s['firstName']} {s['lastName']} ({s['role']})")
+    print(f"  {s['personalNumber']}  {s.get('permissionLevel', 'soldier')}")
