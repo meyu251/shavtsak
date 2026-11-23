@@ -9,6 +9,15 @@ from app import models
 import uuid
 
 
+def company_soldier_ids(company_id: str, db: Session) -> list[str]:
+    """כל החיילים ששייכים לפלוגה: לפי שיוך ישיר, לפי מחלקה בפלוגה, או כמפקדי הפלוגה."""
+    section_ids = [r[0] for r in db.query(models.Section.id).filter(models.Section.company_id == company_id).all()]
+    cond = (models.Soldier.company_id == company_id) | (models.Soldier.managed_company_id == company_id)
+    if section_ids:
+        cond = cond | models.Soldier.sectionId.in_(section_ids)
+    return [r[0] for r in db.query(models.Soldier.id).filter(cond).all()]
+
+
 def get_visible_soldier_ids(actor: models.Soldier, db: Session) -> list[str] | None:
     """
     מחזיר את ה-IDs של החיילים שה-actor רשאי לראות.
@@ -20,23 +29,7 @@ def get_visible_soldier_ids(actor: models.Soldier, db: Session) -> list[str] | N
         if actor.managed_company_id is None:
             # אחורה תואם — מפקד פלוגה שעדיין לא שויך לפלוגה רואה הכל
             return None
-        section_ids = [
-            r[0] for r in db.query(models.Section.id).filter(
-                models.Section.company_id == actor.managed_company_id
-            ).all()
-        ]
-        # חיילי המחלקות של הפלוגה + סגל הפלוגה עצמו (מפקדים שמנהלים את הפלוגה ולא שייכים למחלקה)
-        ids = {
-            r[0] for r in db.query(models.Soldier.id).filter(
-                models.Soldier.managed_company_id == actor.managed_company_id
-            ).all()
-        }
-        if section_ids:
-            ids.update(
-                r[0] for r in db.query(models.Soldier.id).filter(
-                    models.Soldier.sectionId.in_(section_ids)
-                ).all()
-            )
+        ids = set(company_soldier_ids(actor.managed_company_id, db))
         ids.add(actor.id)
         return list(ids)
 
@@ -51,8 +44,13 @@ def get_visible_soldier_ids(actor: models.Soldier, db: Session) -> list[str] | N
         ]
         return ids or [actor.id]
 
-    # soldier — רואה את כל החיילים (שמות וטלפונים), פרטים רגישים מסוננים בפרונטאנד
-    return None
+    # soldier — רואה את כל חיילי הפלוגה שלו (שמות וטלפונים), פרטים רגישים מסוננים בפרונטאנד
+    company_id = get_actor_company_id(actor, db)
+    if company_id is None:
+        return [actor.id]
+    ids = set(company_soldier_ids(company_id, db))
+    ids.add(actor.id)
+    return list(ids)
 
 
 def get_visible_section_ids(actor: models.Soldier, db: Session) -> list[str] | None:
@@ -74,8 +72,11 @@ def get_visible_section_ids(actor: models.Soldier, db: Session) -> list[str] | N
     if level == "section_commander":
         return [actor.sectionId] if actor.sectionId else []
 
-    # soldier — רואה את כל המחלקות (לצורך ספר טלפונים)
-    return None
+    # soldier — רואה את המחלקות של הפלוגה שלו (לצורך ספר טלפונים)
+    company_id = get_actor_company_id(actor, db)
+    if company_id is None:
+        return [actor.sectionId] if actor.sectionId else []
+    return [r[0] for r in db.query(models.Section.id).filter(models.Section.company_id == company_id).all()]
 
 
 def get_actor_company_id(actor: models.Soldier, db: Session) -> str | None:
@@ -84,8 +85,9 @@ def get_actor_company_id(actor: models.Soldier, db: Session) -> str | None:
         return actor.managed_company_id
     if actor.sectionId:
         section = db.query(models.Section).filter(models.Section.id == actor.sectionId).first()
-        return section.company_id if section else None
-    return None
+        if section and section.company_id:
+            return section.company_id
+    return actor.company_id
 
 
 # ── פלוגות אוטומטיות (עוטפות מחלקה בודדת) ─────────────────────────────────────
@@ -109,12 +111,16 @@ def move_section_to_company(section: models.Section, new_company_id: str | None,
         if old_company is not None and old_company.is_auto:
             return  # כבר בעוטפת משלה
         section.company_id = create_auto_company(section.name, db).id
+        db.query(models.Soldier).filter(models.Soldier.sectionId == section.id) \
+            .update({"company_id": section.company_id}, synchronize_session=False)
         db.flush()
         return
     if old_company is not None and old_company.id == new_company_id:
         return
 
     section.company_id = new_company_id
+    db.query(models.Soldier).filter(models.Soldier.sectionId == section.id) \
+        .update({"company_id": new_company_id}, synchronize_session=False)
     db.flush()
     if old_company is not None and old_company.is_auto:
         db.query(models.TaskTemplate).filter(models.TaskTemplate.company_id == old_company.id) \
@@ -125,5 +131,7 @@ def move_section_to_company(section: models.Section, new_company_id: str | None,
         if remaining == 0:
             db.query(models.Soldier).filter(models.Soldier.managed_company_id == old_company.id) \
                 .update({"managed_company_id": None}, synchronize_session=False)
+            db.query(models.Soldier).filter(models.Soldier.company_id == old_company.id) \
+                .update({"company_id": new_company_id}, synchronize_session=False)
             db.delete(old_company)
             db.flush()

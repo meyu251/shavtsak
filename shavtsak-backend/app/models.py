@@ -68,6 +68,9 @@ class Soldier(Base):
     email = Column(String, nullable=True, unique=True)   # deprecated — ראה טבלת users
     managed_company_id = Column(String, ForeignKey("companies.id"), nullable=True)
     # ^ מגדיר את תחום ה-scope של מפקד פלוגה (כאשר אין לו sectionId)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=True)
+    # ^ הפלוגה שהחייל שייך אליה. למי שיש מחלקה — תמיד זהה לפלוגה של המחלקה.
+    #   מאפשר לחייל "ללא שיוך" למחלקה להישאר בתוך הפלוגה שלו.
 
     section = relationship("Section", back_populates="soldiers")
     extra_permissions = relationship("SoldierExtraPermission", back_populates="soldier", cascade="all, delete-orphan")

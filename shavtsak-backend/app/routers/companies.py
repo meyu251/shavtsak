@@ -80,6 +80,10 @@ def delete_company(
     from app.isolation import create_auto_company
     for section in db.query(models.Section).filter(models.Section.company_id == company_id).all():
         section.company_id = create_auto_company(section.name, db).id
+        db.query(models.Soldier).filter(models.Soldier.sectionId == section.id) \
+            .update({"company_id": section.company_id}, synchronize_session=False)
+    db.query(models.Soldier).filter(models.Soldier.company_id == company_id) \
+        .update({"company_id": None}, synchronize_session=False)
     # משימות (עם השיבוצים שלהן) ואנשי קשר של הפלוגה נמחקים איתה
     for task in db.query(models.TaskTemplate).filter(models.TaskTemplate.company_id == company_id).all():
         for a in task.assignments:

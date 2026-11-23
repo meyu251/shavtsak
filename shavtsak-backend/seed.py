@@ -57,6 +57,7 @@ soldiers_data = [
 
 for s in soldiers_data:
     s["personalNumber"] = f"100000{s['id']}"
+    s["company_id"] = "company_auto1" if s["sectionId"] == "section3" else "company1"
     if s["id"] == "1":
         s["managed_company_id"] = "company1"
     db.add(models.Soldier(**s))

@@ -454,6 +454,7 @@ def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
 
     section_id = None
     company_id = None
+    auto_company = None
 
     if body.unitType == "section":
         # מחלקה עצמאית מקבלת פלוגה אוטומטית פרטית משלה (לא משותפת עם אף מחלקה אחרת)
@@ -487,6 +488,7 @@ def bootstrap(body: schemas.BootstrapIn, db: Session = Depends(get_db)):
         isActive=True,
         sectionId=section_id,
         managed_company_id=company_id,
+        company_id=company_id or auto_company.id,
         personalNumber=body.personalNumber.strip() if body.personalNumber else None,
         idNumber=body.idNumber.strip() if body.idNumber else None,
         permissionLevel=permission_level,

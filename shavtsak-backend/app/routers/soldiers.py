@@ -4,7 +4,7 @@ from typing import List
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_soldier
-from app.isolation import get_visible_soldier_ids
+from app.isolation import get_visible_soldier_ids, get_actor_company_id
 import uuid
 
 router = APIRouter(prefix="/soldiers", tags=["soldiers"])
@@ -29,6 +29,15 @@ def _clean(v):
         return None
     v = v.strip()
     return v or None
+
+
+def _soldier_company_id(section_id, actor: models.Soldier, db: Session, fallback=None):
+    """הפלוגה של חייל: של המחלקה שלו, ואם אין מחלקה — הקיימת / של מי שמוסיף אותו."""
+    if section_id:
+        section = db.query(models.Section).filter(models.Section.id == section_id).first()
+        if section and section.company_id:
+            return section.company_id
+    return fallback or get_actor_company_id(actor, db)
 
 
 def _normalize_and_check(body, db: Session, soldier_id: str | None = None):
@@ -82,6 +91,7 @@ def add_soldier(body: schemas.SoldierCreate, db: Session = Depends(get_db), acto
         address=body.address, birthDate=body.birthDate,
         permissionLevel=body.permissionLevel, email=body.email,
         managed_company_id=body.managedCompanyId,
+        company_id=_soldier_company_id(body.sectionId, actor, db),
     )
     db.add(soldier)
     db.flush()
@@ -108,6 +118,7 @@ def update_soldier(soldier_id: str, body: schemas.SoldierUpdate, db: Session = D
                   "permissionLevel", "email"]:
         setattr(soldier, field, getattr(body, field))
     soldier.managed_company_id = body.managedCompanyId
+    soldier.company_id = _soldier_company_id(body.sectionId, actor, db, fallback=soldier.company_id)
     # עדכון הרשאות נוספות — מחיקה ויצירה מחדש
     for ep in soldier.extra_permissions:
         db.delete(ep)
