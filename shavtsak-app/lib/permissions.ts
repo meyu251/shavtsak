@@ -103,11 +103,12 @@ export function canAccessSchedule(viewer: Soldier): boolean {
   );
 }
 
-/** האם הצופה יכול לגשת לניהול משימות? */
+/** האם הצופה יכול לגשת לניהול משימות? מפקד מחלקה עצמאית מנהל את המשימות של עצמו. */
 export function canAccessTaskManagement(viewer: Soldier): boolean {
   return (
     viewer.permissionLevel === 'company_commander' ||
-    viewer.extraPermissions.includes('tasks')
+    viewer.extraPermissions.includes('tasks') ||
+    (viewer.permissionLevel === 'section_commander' && Boolean(viewer.unitIsAuto))
   );
 }
 

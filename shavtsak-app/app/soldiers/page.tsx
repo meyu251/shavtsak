@@ -8,7 +8,7 @@ import {
   fullName, canAddSoldier, canGrantPermission, canChangePermissionLevel,
   canManageCompanies, PERMISSION_LEVEL_LABELS,
 } from "@/lib/permissions";
-import { useAuth } from "@/lib/useAuth";
+import { useAuth, saveSession } from "@/lib/useAuth";
 import AppHeader from "@/components/AppHeader";
 import { showToast } from "@/components/Toast";
 import { Modal } from "@/components/Modal";
@@ -117,6 +117,8 @@ export default function SoldiersPage() {
   const [form, setForm] = useState<Omit<Soldier, 'id'>>(emptyForm());
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [menuOrder, setMenuOrder] = useState<string[]>(['all', 'none']);
+  const [joinCode, setJoinCode] = useState('');
+  const [joining, setJoining] = useState(false);
 
   const sectionSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -280,6 +282,24 @@ export default function SoldiersPage() {
     }
   }
 
+  // ── Independent section joins a company ───────────────────────────────────
+  async function handleJoinCompany(e: React.FormEvent) {
+    e.preventDefault();
+    if (!viewer?.sectionId || !joinCode.trim()) return;
+    setJoining(true);
+    try {
+      await api.joinCompany(viewer.sectionId, joinCode.trim());
+      // רענון פרטי המשתמש (המחלקה כבר לא עצמאית) וטעינה מחדש של הנתונים
+      const me = await api.getMe();
+      const token = localStorage.getItem('shavtsak_token');
+      if (token) saveSession(token, me);
+      window.location.reload();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'שגיאה בהצטרפות לפלוגה');
+      setJoining(false);
+    }
+  }
+
   // Drag & drop handlers for sections (company commander)
   function handleSectionDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -362,7 +382,7 @@ export default function SoldiersPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <AppHeader
-        currentUser={viewer ?? currentUser}
+        currentUser={viewer ? { ...currentUser, ...viewer } : currentUser}
         onLogout={logout}
         backHref="/"
         title="👥 ניהול כוח אדם"
@@ -374,6 +394,29 @@ export default function SoldiersPage() {
 
         {/* ── Left Panel: Sections + Search ────────────────────────────────── */}
         <aside className={`w-72 flex-shrink-0 flex-col gap-3 ${selected || mobileShowList ? 'hidden md:flex' : 'flex'}`}>
+
+          {/* Company join code (company commander) */}
+          {viewer?.permissionLevel === 'company_commander' && companies[0]?.joinCode && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 text-sm">
+              <div className="font-medium text-gray-700">קוד הצטרפות לפלוגה</div>
+              <div dir="ltr" className="font-mono text-lg tracking-widest text-purple-700 my-1">{companies[0].joinCode}</div>
+              <div className="text-xs text-gray-500">מפקד מחלקה עצמאית מזין את הקוד כדי לצרף את המחלקה שלו לפלוגה.</div>
+            </div>
+          )}
+
+          {/* Join a company (independent section commander) */}
+          {viewer?.permissionLevel === 'section_commander' && viewer.unitIsAuto && (
+            <form onSubmit={handleJoinCompany} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 text-sm space-y-2">
+              <div className="font-medium text-gray-700">הצטרפות לפלוגה</div>
+              <div className="text-xs text-gray-500">המחלקה שלך עצמאית. קיבלת קוד ממפקד פלוגה? הזן אותו כאן. המשימות והשיבוצים יעברו לפלוגה.</div>
+              <input dir="ltr" value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="קוד הצטרפות"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-400" />
+              <button type="submit" disabled={joining || !joinCode.trim()}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg py-2 cursor-pointer">
+                {joining ? 'מצטרף...' : 'הצטרף לפלוגה'}
+              </button>
+            </form>
+          )}
 
           {/* Search */}
           <input

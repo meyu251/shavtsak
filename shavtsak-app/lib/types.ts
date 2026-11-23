@@ -24,6 +24,7 @@ export interface Company {
   id: string;
   name: string;             // "פלוגה א'", "פלוגה ב'", ...
   battalionId?: string | null; // לשימוש עתידי — ID גדוד
+  joinCode?: string | null;    // מוצג רק למפקד הפלוגה — קוד הצטרפות למחלקות עצמאיות
 }
 
 export interface Section {
@@ -53,6 +54,8 @@ export interface Soldier {
   email?: string;
   // היררכיה — מפקד פלוגה שמנהל פלוגה ספציפית
   managedCompanyId?: string | null;
+  // המחלקה של החייל היא יחידה עצמאית (לא שייכת לפלוגה אמיתית)
+  unitIsAuto?: boolean;
   // dev-only — מגיע מטבלת users, לא מאוחסן לחיילים
   isDeveloper?: boolean;
   hasPassword?: boolean;

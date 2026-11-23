@@ -25,6 +25,12 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401 && token && typeof window !== "undefined" && (!path.startsWith("/auth/") || path === "/auth/me")) {
+    // התחברות שפג תוקפה (או מ-DB אחר) — מנקים ושולחים למסך הכניסה במקום להציג דף שבור
+    localStorage.removeItem("shavtsak_token");
+    ["shavtsak_current_user", "shavtsak_original_token", "shavtsak_original_user"].forEach(k => localStorage.removeItem(k));
+    window.location.href = "/login";
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { detail?: string }).detail ?? `שגיאה ${res.status}`);
@@ -129,6 +135,11 @@ export async function addSection(data: { name: string; companyId?: string | null
 
 export async function updateSection(id: string, data: { name: string; companyId?: string | null }): Promise<Section> {
   return req("PUT", `/sections/${id}`, { name: data.name, company_id: data.companyId ?? null });
+}
+
+/** מחלקה עצמאית מצטרפת לפלוגה עם קוד ההצטרפות של הפלוגה */
+export async function joinCompany(sectionId: string, code: string): Promise<Section> {
+  return req("POST", `/sections/${sectionId}/join`, { code });
 }
 
 export async function deleteSection(id: string): Promise<void> {

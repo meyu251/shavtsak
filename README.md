@@ -55,6 +55,22 @@ All demo users log in on the regular login screen with password `123456`:
 
 The DEV button (top of every inner page, for 1000001) lets you switch to any user without logging out.
 
+Join code of פלוגה א: `DEMO2026`. Log in as 1000009 (independent section), open "ניהול כוח אדם" and enter it to join the company.
+
+## Tests
+
+The backend has user-story tests in `shavtsak-backend/tests` (login, Google linking, isolation between units,
+permissions per role, schedule, phonebook, joining a company, data migrations).
+They need an **empty, test-only** PostgreSQL database (every test wipes it):
+
+```bash
+cd shavtsak-backend
+venv\Scripts\activate
+pip install -r requirements-dev.txt
+set TEST_DATABASE_URL=postgresql://...shavtsak_test...   # PowerShell: $env:TEST_DATABASE_URL="..."
+pytest
+```
+
 ## Local network (phone testing)
 
 ```bash
